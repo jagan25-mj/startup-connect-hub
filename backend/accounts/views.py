@@ -1,0 +1,184 @@
+from rest_framework import status, generics
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+
+from .serializers import (
+    UserRegistrationSerializer,
+    UserLoginSerializer,
+    UserProfileSerializer,
+    UserUpdateSerializer,
+)
+
+User = get_user_model()
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_view(request):
+    """
+    Register a new user.
+    
+    POST /api/auth/register/
+    Body: {
+        "email": "user@example.com",
+        "password": "password123",
+        "password_confirm": "password123",
+        "full_name": "John Doe",
+        "role": "founder"  # or "talent"
+    }
+    """
+    serializer = UserRegistrationSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        user = serializer.save()
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        # Return user data with tokens
+        user_data = UserProfileSerializer(user).data
+        
+        return Response({
+            'user': user_data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            },
+            'message': 'Account created successfully!'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response({
+        'error': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    """
+    Login a user and return JWT tokens.
+    
+    POST /api/auth/login/
+    Body: {
+        "email": "user@example.com",
+        "password": "password123"
+    }
+    """
+    serializer = UserLoginSerializer(
+        data=request.data,
+        context={'request': request}
+    )
+    
+    if serializer.is_valid():
+        user = serializer.validated_data['user']
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        # Return user data with tokens
+        user_data = UserProfileSerializer(user).data
+        
+        return Response({
+            'user': user_data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            },
+            'message': 'Login successful!'
+        }, status=status.HTTP_200_OK)
+    
+    return Response({
+        'error': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def me_view(request):
+    """
+    Get or update the current user's profile.
+    
+    GET /api/auth/me/
+    PUT/PATCH /api/auth/me/
+    Body (for PUT/PATCH): {
+        "full_name": "John Doe Updated",
+        "bio": "Software engineer...",
+        "skills": ["Python", "Django"],
+        "avatar_url": "https://..."
+    }
+    """
+    user = request.user
+    
+    if request.method == 'GET':
+        serializer = UserProfileSerializer(user)
+        return Response(serializer.data)
+    
+    elif request.method in ['PUT', 'PATCH']:
+        partial = request.method == 'PATCH'
+        serializer = UserUpdateSerializer(
+            user,
+            data=request.data,
+            partial=partial
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            user_data = UserProfileSerializer(user).data
+            return Response({
+                'user': user_data,
+                'message': 'Profile updated successfully!'
+            })
+        
+        return Response({
+            'error': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """
+    Health check endpoint.
+    
+    GET /api/health/
+    """
+    return Response({
+        'status': 'ok',
+        'message': 'Startup Platform API is running',
+        'version': '1.0.0'
+    })
+
+
+class UserListView(generics.ListAPIView):
+    """
+    List all users (for admin or discovery).
+    
+    GET /api/users/
+    """
+    queryset = User.objects.filter(is_active=True)
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filter users by role if specified."""
+        queryset = super().get_queryset()
+        role = self.request.query_params.get('role', None)
+        
+        if role and role in [User.Role.FOUNDER, User.Role.TALENT]:
+            queryset = queryset.filter(role=role)
+        
+        return queryset
+
+
+class UserDetailView(generics.RetrieveAPIView):
+    """
+    Get a specific user's profile.
+    
+    GET /api/users/<uuid:pk>/
+    """
+    queryset = User.objects.filter(is_active=True)
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]

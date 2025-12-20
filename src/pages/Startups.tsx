@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Plus, Rocket, Globe, Building, Trash2, Edit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -21,8 +20,12 @@ interface Startup {
   stage: string | null;
   website: string | null;
   owner_id: string;
+  owner_name: string;
   created_at: string;
+  updated_at: string;
 }
+
+const API_BASE_URL = 'http://localhost:8000/api';
 
 const INDUSTRIES = [
   'Technology',
@@ -46,7 +49,7 @@ const STAGES = [
 ];
 
 export default function Startups() {
-  const { profile } = useAuth();
+  const { user, tokens } = useAuth();
   const [startups, setStartups] = useState<Startup[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -60,20 +63,23 @@ export default function Startups() {
     website: '',
   });
 
-  const isFounder = profile?.role === 'founder';
+  const isFounder = user?.role === 'founder';
 
   const fetchStartups = async () => {
+    if (!tokens?.access) return;
+
     try {
-      let query = supabase.from('startups').select('*').order('created_at', { ascending: false });
-      
-      if (isFounder) {
-        query = query.eq('owner_id', profile.id);
-      }
+      const endpoint = isFounder ? `${API_BASE_URL}/startups/my/` : `${API_BASE_URL}/startups/`;
+      const response = await fetch(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${tokens.access}`,
+        },
+      });
 
-      const { data, error } = await query;
+      if (!response.ok) throw new Error('Failed to fetch startups');
 
-      if (error) throw error;
-      setStartups(data || []);
+      const data = await response.json();
+      setStartups(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
       console.error('Error fetching startups:', error);
       toast.error('Failed to load startups');
@@ -83,42 +89,50 @@ export default function Startups() {
   };
 
   useEffect(() => {
-    if (profile) {
+    if (user && tokens) {
       fetchStartups();
     }
-  }, [profile]);
+  }, [user, tokens]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!user || !tokens) return;
     setFormLoading(true);
 
     try {
-      if (editingStartup) {
-        const { error } = await supabase
-          .from('startups')
-          .update({
-            name: formData.name,
-            description: formData.description || null,
-            industry: formData.industry || null,
-            stage: formData.stage || null,
-            website: formData.website || null,
-          })
-          .eq('id', editingStartup.id);
+      const startupData = {
+        name: formData.name,
+        description: formData.description || null,
+        industry: formData.industry || null,
+        stage: formData.stage || null,
+        website: formData.website || null,
+      };
 
-        if (error) throw error;
-        toast.success('Startup updated successfully!');
-      } else {
-        const { error } = await supabase.from('startups').insert({
-          name: formData.name,
-          description: formData.description || null,
-          industry: formData.industry || null,
-          stage: formData.stage || null,
-          website: formData.website || null,
-          owner_id: profile.id,
+      if (editingStartup) {
+        const response = await fetch(`${API_BASE_URL}/startups/${editingStartup.id}/`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(startupData),
         });
 
-        if (error) throw error;
+        if (!response.ok) throw new Error('Failed to update startup');
+
+        toast.success('Startup updated successfully!');
+      } else {
+        const response = await fetch(`${API_BASE_URL}/startups/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(startupData),
+        });
+
+        if (!response.ok) throw new Error('Failed to create startup');
+
         toast.success('Startup created successfully!');
       }
 
@@ -135,10 +149,18 @@ export default function Startups() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this startup?')) return;
+    if (!tokens) return;
 
     try {
-      const { error } = await supabase.from('startups').delete().eq('id', id);
-      if (error) throw error;
+      const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${tokens.access}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Failed to delete startup');
+
       toast.success('Startup deleted');
       fetchStartups();
     } catch (error) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle, XCircle, AlertCircle, Activity, Database, Shield, Zap } from 'lucide-react';
 
 interface HealthCheck {
@@ -11,7 +11,10 @@ interface HealthCheck {
   icon: React.ElementType;
 }
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export default function Status() {
+  const { tokens } = useAuth();
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -20,60 +23,65 @@ export default function Status() {
     setLoading(true);
     const results: HealthCheck[] = [];
 
-    // Database connectivity check
-    const dbStart = Date.now();
-    try {
-      const { error } = await supabase.from('profiles').select('id').limit(1);
-      const dbLatency = Date.now() - dbStart;
-      results.push({
-        name: 'Database',
-        status: error ? 'degraded' : 'operational',
-        latency: dbLatency,
-        icon: Database,
-      });
-    } catch {
-      results.push({
-        name: 'Database',
-        status: 'down',
-        icon: Database,
-      });
-    }
-
-    // Auth service check
-    const authStart = Date.now();
-    try {
-      const { error } = await supabase.auth.getSession();
-      const authLatency = Date.now() - authStart;
-      results.push({
-        name: 'Authentication',
-        status: error ? 'degraded' : 'operational',
-        latency: authLatency,
-        icon: Shield,
-      });
-    } catch {
-      results.push({
-        name: 'Authentication',
-        status: 'down',
-        icon: Shield,
-      });
-    }
-
-    // API responsiveness
+    // API health check
     const apiStart = Date.now();
     try {
-      const { count } = await supabase.from('startups').select('*', { count: 'exact', head: true });
+      const response = await fetch(`${API_BASE_URL}/health/`);
       const apiLatency = Date.now() - apiStart;
       results.push({
-        name: 'API',
-        status: 'operational',
+        name: 'API Server',
+        status: response.ok ? 'operational' : 'degraded',
         latency: apiLatency,
-        icon: Zap,
+        icon: Activity,
       });
     } catch {
       results.push({
-        name: 'API',
+        name: 'API Server',
         status: 'down',
-        icon: Zap,
+        icon: Activity,
+      });
+    }
+
+    // Database connectivity check (via API)
+    if (tokens?.access) {
+      const dbStart = Date.now();
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/me/`, {
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+          },
+        });
+        const dbLatency = Date.now() - dbStart;
+        results.push({
+          name: 'Database',
+          status: response.ok ? 'operational' : 'degraded',
+          latency: dbLatency,
+          icon: Database,
+        });
+      } catch {
+        results.push({
+          name: 'Database',
+          status: 'down',
+          icon: Database,
+        });
+      }
+
+      // Auth service check
+      results.push({
+        name: 'Authentication',
+        status: 'operational',
+        icon: Shield,
+      });
+    } else {
+      results.push({
+        name: 'Database',
+        status: 'degraded',
+        icon: Database,
+      });
+      results.push({
+        name: 'Authentication',
+        status: 'degraded',
+        icon: Shield,
       });
     }
 

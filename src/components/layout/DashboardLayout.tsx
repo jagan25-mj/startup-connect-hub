@@ -18,7 +18,7 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { profile, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -31,7 +31,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: User, label: 'Profile', href: '/profile' },
-    ...(profile?.role === 'founder' 
+    ...(user?.role === 'founder' 
       ? [{ icon: Rocket, label: 'My Startups', href: '/startups' }] 
       : [{ icon: Rocket, label: 'Explore Startups', href: '/startups' }]
     ),
@@ -76,10 +76,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="hidden md:flex items-center gap-3">
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">
-                  {profile?.full_name || 'User'}
+                  {user?.full_name || 'User'}
                 </p>
                 <p className="text-xs text-muted-foreground capitalize">
-                  {profile?.role}
+                  {user?.role}
                 </p>
               </div>
               <Button variant="ghost" size="icon" onClick={handleSignOut}>

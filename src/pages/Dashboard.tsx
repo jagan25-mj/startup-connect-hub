@@ -3,7 +3,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
 import { Link } from 'react-router-dom';
 import { Rocket, Users, Briefcase, TrendingUp, Plus, ArrowRight } from 'lucide-react';
 
@@ -14,8 +13,10 @@ interface Stats {
   myStartups: number;
 }
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export default function Dashboard() {
-  const { profile } = useAuth();
+  const { user, tokens } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalStartups: 0,
     totalFounders: 0,
@@ -26,39 +27,45 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (!tokens?.access) return;
+
       try {
         // Fetch total startups
-        const { count: startupsCount } = await supabase
-          .from('startups')
-          .select('*', { count: 'exact', head: true });
+        const startupsResponse = await fetch(`${API_BASE_URL}/startups/`, {
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+          },
+        });
+        const startupsData = await startupsResponse.json();
+        const totalStartups = startupsData.count || startupsData.length || 0;
 
-        // Fetch founders count
-        const { count: foundersCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'founder');
-
-        // Fetch talent count
-        const { count: talentCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'talent');
+        // Fetch users count by role
+        const usersResponse = await fetch(`${API_BASE_URL}/auth/users/`, {
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+          },
+        });
+        const usersData = await usersResponse.json();
+        const totalFounders = usersData.filter((u: any) => u.role === 'founder').length;
+        const totalTalent = usersData.filter((u: any) => u.role === 'talent').length;
 
         // Fetch my startups (if founder)
-        let myStartupsCount = 0;
-        if (profile?.role === 'founder') {
-          const { count } = await supabase
-            .from('startups')
-            .select('*', { count: 'exact', head: true })
-            .eq('owner_id', profile.id);
-          myStartupsCount = count || 0;
+        let myStartups = 0;
+        if (user?.role === 'founder') {
+          const myStartupsResponse = await fetch(`${API_BASE_URL}/startups/my/`, {
+            headers: {
+              'Authorization': `Bearer ${tokens.access}`,
+            },
+          });
+          const myStartupsData = await myStartupsResponse.json();
+          myStartups = myStartupsData.length || 0;
         }
 
         setStats({
-          totalStartups: startupsCount || 0,
-          totalFounders: foundersCount || 0,
-          totalTalent: talentCount || 0,
-          myStartups: myStartupsCount,
+          totalStartups,
+          totalFounders,
+          totalTalent,
+          myStartups,
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
@@ -67,10 +74,10 @@ export default function Dashboard() {
       }
     };
 
-    if (profile) {
+    if (user && tokens) {
       fetchStats();
     }
-  }, [profile]);
+  }, [user, tokens]);
 
   const statCards = [
     { 
@@ -94,7 +101,7 @@ export default function Dashboard() {
       color: 'text-success',
       bgColor: 'bg-success/10'
     },
-    ...(profile?.role === 'founder' ? [{
+    ...(user?.role === 'founder' ? [{
       title: 'My Startups', 
       value: stats.myStartups, 
       icon: TrendingUp, 
@@ -110,15 +117,15 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              Welcome back, {profile?.full_name?.split(' ')[0] || 'there'}!
+              Welcome back, {user?.full_name?.split(' ')[0] || 'there'}!
             </h1>
             <p className="text-muted-foreground mt-1">
-              {profile?.role === 'founder' 
+              {user?.role === 'founder' 
                 ? 'Manage your startups and find talented co-founders'
                 : 'Discover exciting startup opportunities'}
             </p>
           </div>
-          {profile?.role === 'founder' && (
+          {user?.role === 'founder' && (
             <Link to="/startups">
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -171,7 +178,7 @@ export default function Dashboard() {
               </Link>
               <Link to="/startups">
                 <Button variant="outline" className="w-full justify-between">
-                  {profile?.role === 'founder' ? 'Manage startups' : 'Explore startups'}
+                  {user?.role === 'founder' ? 'Manage startups' : 'Explore startups'}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -194,18 +201,18 @@ export default function Dashboard() {
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xl font-bold">
-                  {profile?.full_name?.charAt(0) || 'U'}
+                  {user?.full_name?.charAt(0) || 'U'}
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">{profile?.full_name || 'User'}</p>
-                  <p className="text-sm text-muted-foreground">{profile?.email}</p>
+                  <p className="font-medium text-foreground">{user?.full_name || 'User'}</p>
+                  <p className="text-sm text-muted-foreground">{user?.email}</p>
                   <span className="inline-block mt-1 px-2 py-0.5 bg-accent text-accent-foreground text-xs font-medium rounded-full capitalize">
-                    {profile?.role}
+                    {user?.role}
                   </span>
                 </div>
               </div>
-              {profile?.bio && (
-                <p className="text-sm text-muted-foreground">{profile.bio}</p>
+              {user?.bio && (
+                <p className="text-sm text-muted-foreground">{user.bio}</p>
               )}
             </CardContent>
           </Card>

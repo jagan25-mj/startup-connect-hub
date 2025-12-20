@@ -6,37 +6,42 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { User, Mail, Save, X, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export default function Profile() {
-  const { profile, refreshProfile } = useAuth();
+  const { user, tokens, refreshProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    full_name: profile?.full_name || '',
-    bio: profile?.bio || '',
-    skills: profile?.skills || [],
+    full_name: user?.full_name || '',
+    bio: user?.bio || '',
+    skills: user?.skills || [],
   });
   const [newSkill, setNewSkill] = useState('');
 
   const handleSave = async () => {
-    if (!profile) return;
+    if (!user || !tokens) return;
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
+      const response = await fetch(`${API_BASE_URL}/auth/me/`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${tokens.access}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           full_name: formData.full_name,
           bio: formData.bio,
           skills: formData.skills,
-        })
-        .eq('id', profile.id);
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) throw new Error('Failed to update profile');
 
       await refreshProfile();
       toast.success('Profile updated successfully!');
@@ -68,9 +73,9 @@ export default function Profile() {
 
   const handleCancel = () => {
     setFormData({
-      full_name: profile?.full_name || '',
-      bio: profile?.bio || '',
-      skills: profile?.skills || [],
+      full_name: user?.full_name || '',
+      bio: user?.bio || '',
+      skills: user?.skills || [],
     });
     setIsEditing(false);
   };
@@ -104,7 +109,7 @@ export default function Profile() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-6">
               <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-soft">
-                {profile?.full_name?.charAt(0) || 'U'}
+                {user?.full_name?.charAt(0) || 'U'}
               </div>
               <div className="flex-1">
                 {isEditing ? (
@@ -120,14 +125,14 @@ export default function Profile() {
                 ) : (
                   <>
                     <h2 className="text-2xl font-display font-bold text-foreground">
-                      {profile?.full_name || 'No name set'}
+                      {user?.full_name || 'No name set'}
                     </h2>
                     <p className="text-muted-foreground flex items-center gap-2 mt-1">
                       <Mail className="h-4 w-4" />
-                      {profile?.email}
+                      {user?.email}
                     </p>
                     <span className="inline-block mt-2 px-3 py-1 bg-accent text-accent-foreground text-sm font-medium rounded-full capitalize">
-                      {profile?.role}
+                      {user?.role}
                     </span>
                   </>
                 )}
@@ -155,14 +160,14 @@ export default function Profile() {
               />
             ) : (
               <p className="text-foreground">
-                {profile?.bio || 'No bio added yet. Click Edit Profile to add one.'}
+                {user?.bio || 'No bio added yet. Click Edit Profile to add one.'}
               </p>
             )}
           </CardContent>
         </Card>
 
         {/* Skills Section (for Talent) */}
-        {profile?.role === 'talent' && (
+        {user?.role === 'talent' && (
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display">Skills</CardTitle>
@@ -183,7 +188,7 @@ export default function Profile() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                {(isEditing ? formData.skills : profile?.skills || []).map((skill) => (
+                {(isEditing ? formData.skills : user?.skills || []).map((skill) => (
                   <Badge key={skill} variant="secondary" className="gap-1">
                     {skill}
                     {isEditing && (

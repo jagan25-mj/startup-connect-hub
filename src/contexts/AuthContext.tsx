@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
 
 interface Profile {
   id: string;
@@ -14,117 +12,201 @@ interface Profile {
   updated_at: string;
 }
 
+interface AuthTokens {
+  access: string;
+  refresh: string;
+}
+
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  profile: Profile | null;
+  user: Profile | null;
+  tokens: AuthTokens | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string, role: 'founder' | 'talent') => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string, role: 'founder' | 'talent') => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshToken: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
+  const [tokens, setTokens] = useState<AuthTokens | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+  const fetchProfile = async (accessToken: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/me/`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (error) {
-      console.error('Error fetching profile:', error);
-      return null;
+    if (!response.ok) {
+      throw new Error('Failed to fetch profile');
     }
 
-    return data as Profile;
+    return response.json();
+  };
+
+  const refreshToken = async (): Promise<boolean> => {
+    if (!tokens?.refresh) return false;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh: tokens.refresh }),
+      });
+
+      if (!response.ok) {
+        signOut();
+        return false;
+      }
+
+      const data = await response.json();
+      const newTokens = { access: data.access, refresh: tokens.refresh };
+      setTokens(newTokens);
+      localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
+      return true;
+    } catch (error) {
+      signOut();
+      return false;
+    }
+  };
+
+  const signUp = async (email: string, password: string, fullName: string, role: 'founder' | 'talent') => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          password_confirm: password,
+          full_name: fullName,
+          role,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { error: data.error || 'Registration failed' };
+      }
+
+      setUser(data.user);
+      setTokens(data.tokens);
+      localStorage.setItem('auth_tokens', JSON.stringify(data.tokens));
+      return { error: null };
+    } catch (error) {
+      return { error: 'Network error' };
+    }
+  };
+
+  const signIn = async (email: string, password: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { error: data.error || 'Login failed' };
+      }
+
+      setUser(data.user);
+      setTokens(data.tokens);
+      localStorage.setItem('auth_tokens', JSON.stringify(data.tokens));
+      return { error: null };
+    } catch (error) {
+      return { error: 'Network error' };
+    }
+  };
+
+  const signOut = async () => {
+    setUser(null);
+    setTokens(null);
+    localStorage.removeItem('auth_tokens');
   };
 
   const refreshProfile = async () => {
-    if (user) {
-      const profileData = await fetchProfile(user.id);
-      setProfile(profileData);
+    if (!tokens?.access) return;
+
+    try {
+      const profile = await fetchProfile(tokens.access);
+      setUser(profile);
+    } catch (error) {
+      // Try to refresh token
+      const refreshed = await refreshToken();
+      if (refreshed && tokens?.access) {
+        try {
+          const profile = await fetchProfile(tokens.access);
+          setUser(profile);
+        } catch (error) {
+          signOut();
+        }
+      } else {
+        signOut();
+      }
     }
   };
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    const initAuth = async () => {
+      const storedTokens = localStorage.getItem('auth_tokens');
+      if (storedTokens) {
+        try {
+          const parsedTokens = JSON.parse(storedTokens);
+          setTokens(parsedTokens);
 
-        // Defer profile fetching with setTimeout to prevent deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id).then(setProfile);
-          }, 0);
-        } else {
-          setProfile(null);
+          // Try to fetch profile with stored token
+          const profile = await fetchProfile(parsedTokens.access);
+          setUser(profile);
+        } catch (error) {
+          // Try to refresh token
+          const refreshed = await refreshToken();
+          if (refreshed && tokens?.access) {
+            try {
+              const profile = await fetchProfile(tokens.access);
+              setUser(profile);
+            } catch (error) {
+              localStorage.removeItem('auth_tokens');
+            }
+          } else {
+            localStorage.removeItem('auth_tokens');
+          }
         }
       }
-    );
+      setLoading(false);
+    };
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchProfile(session.user.id).then((profileData) => {
-          setProfile(profileData);
-          setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    initAuth();
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string, role: 'founder' | 'talent') => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-          role: role,
-        },
-      },
-    });
-
-    return { error: error as Error | null };
-  };
-
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    return { error: error as Error | null };
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{
+      user,
+      tokens,
+      loading,
+      signUp,
+      signIn,
+      signOut,
+      refreshProfile,
+      refreshToken,
+    }}>
       {children}
     </AuthContext.Provider>
   );
