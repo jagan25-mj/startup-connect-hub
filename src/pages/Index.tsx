@@ -6,22 +6,29 @@ import { Rocket, Users, Briefcase, ArrowRight, CheckCircle } from 'lucide-react'
 import { Link } from 'react-router-dom';
 
 export default function Index() {
+  console.log('Index component rendering...');
   const { user, loading } = useAuth();
+  console.log('Auth state:', { user, loading });
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log('Index useEffect running, user:', user, 'loading:', loading);
     if (!loading && user) {
+      console.log('User found, navigating to dashboard...');
       navigate('/dashboard');
     }
   }, [user, loading, navigate]);
 
   if (loading) {
+    console.log('Showing loading screen...');
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
   }
+
+  console.log('Showing index page...');
 
   return (
     <div className="min-h-screen bg-background">

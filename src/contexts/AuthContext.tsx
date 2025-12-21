@@ -177,34 +177,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initAuth = async () => {
+      console.log('Initializing auth...');
       const storedTokens = localStorage.getItem('auth_tokens');
       if (storedTokens) {
         try {
+          console.log('Found stored tokens, parsing...');
           const parsedTokens = JSON.parse(storedTokens);
           setTokens(parsedTokens);
 
           // Try to fetch profile with stored token
+          console.log('Fetching profile with stored token...');
           const profile = await fetchProfile(parsedTokens.access);
+          console.log('Profile fetched successfully:', profile);
           setUser(profile);
         } catch (error) {
+          console.error('Error fetching profile with stored token:', error);
           // Token might be expired, try refresh
           setTokens(JSON.parse(storedTokens));
+          console.log('Trying to refresh token...');
           const refreshed = await refreshToken();
           if (refreshed) {
             try {
               const newTokens = JSON.parse(localStorage.getItem('auth_tokens') || '{}');
+              console.log('Token refreshed, fetching profile...');
               const profile = await fetchProfile(newTokens.access);
+              console.log('Profile fetched after refresh:', profile);
               setUser(profile);
             } catch (error) {
+              console.error('Error fetching profile after refresh:', error);
               localStorage.removeItem('auth_tokens');
               setTokens(null);
             }
           } else {
+            console.log('Token refresh failed');
             localStorage.removeItem('auth_tokens');
             setTokens(null);
           }
         }
+      } else {
+        console.log('No stored tokens found');
       }
+      console.log('Auth initialization complete');
       setLoading(false);
     };
 
