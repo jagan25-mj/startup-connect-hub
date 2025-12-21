@@ -6,6 +6,24 @@
 // ============================================================================
 // AUTH TYPES
 // ============================================================================
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('VITE_API_BASE_URL is not defined');
+}
+
+export const apiClient = {
+  post: (path: string, body?: any, options?: RequestInit) =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      ...options,
+    }),
+};
+
+
+
 
 export interface User {
   id: string;

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiClient } from '@/lib/apiClient';
 import type { User, AuthResponse, LoginRequest, RegisterRequest } from '@/types/api';
+import { API_ENDPOINTS } from '@/lib/api';
+
 
 interface AuthContextType {
   user: User | null;
