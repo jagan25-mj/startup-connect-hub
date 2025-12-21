@@ -157,8 +157,10 @@ SIMPLE_JWT = {
 # CORS Settings - Allow frontend to communicate with backend
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
+    'http://localhost:5173',  # ✅ FIXED: Added Vite default port
     'http://localhost:3000',
     'http://127.0.0.1:8080',
+    'http://127.0.0.1:5173',  # ✅ FIXED: Added localhost variant
     'http://127.0.0.1:3000',
 ]
 

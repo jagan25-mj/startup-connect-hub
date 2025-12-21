@@ -120,12 +120,14 @@ class StartupDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a startup.
     
-    GET /api/startups/<uuid:pk>/
-    PUT/PATCH /api/startups/<uuid:pk>/
-    DELETE /api/startups/<uuid:pk>/
+    GET /api/startups/<uuid:startup_id>/
+    PUT/PATCH /api/startups/<uuid:startup_id>/
+    DELETE /api/startups/<uuid:startup_id>/
     """
     queryset = Startup.objects.select_related('owner').all()
     permission_classes = [IsOwnerOrReadOnly]
+    lookup_field = 'id'  # ✅ FIXED: Added lookup field
+    lookup_url_kwarg = 'startup_id'  # ✅ FIXED: Added lookup URL kwarg
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

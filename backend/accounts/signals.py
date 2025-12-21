@@ -10,8 +10,6 @@ def create_user_profile(sender, instance, created, **kwargs):
         Profile.objects.create(user=instance)
 
 
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    """Save the profile when the user is saved."""
-    if hasattr(instance, 'profile'):
-        instance.profile.save()
+# ✅ FIXED: Removed save_user_profile signal
+# Profiles should be saved explicitly through the API when updated
+# The previous implementation was causing unnecessary saves on every user update

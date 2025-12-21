@@ -35,7 +35,6 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      // Validate inputs
       emailSchema.parse(email);
       passwordSchema.parse(password);
       if (!isLogin) {
@@ -45,10 +44,10 @@ export default function Auth() {
       if (isLogin) {
         const { error } = await signIn(email, password);
         if (error) {
-          if (error.message.includes('Invalid login credentials')) {
+          if (error.includes('Invalid') || error.includes('credentials')) {
             toast.error('Invalid email or password');
           } else {
-            toast.error(error.message);
+            toast.error(error);
           }
         } else {
           toast.success('Welcome back!');
@@ -57,10 +56,10 @@ export default function Auth() {
       } else {
         const { error } = await signUp(email, password, fullName, role);
         if (error) {
-          if (error.message.includes('already registered')) {
+          if (error.includes('already registered') || error.includes('already exists')) {
             toast.error('This email is already registered. Please sign in.');
           } else {
-            toast.error(error.message);
+            toast.error(error);
           }
         } else {
           toast.success('Account created successfully!');
@@ -79,7 +78,6 @@ export default function Auth() {
   return (
     <div className="min-h-screen gradient-hero flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-scale-in">
-        {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-soft">
             <Rocket className="h-5 w-5 text-primary-foreground" />
@@ -95,11 +93,12 @@ export default function Auth() {
               {isLogin ? 'Welcome back' : 'Create your account'}
             </CardTitle>
             <CardDescription>
-              {isLogin 
-                ? 'Sign in to access your dashboard' 
+              {isLogin
+                ? 'Sign in to access your dashboard'
                 : 'Join the startup ecosystem today'}
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
@@ -155,6 +154,7 @@ export default function Auth() {
               {!isLogin && (
                 <div className="space-y-3">
                   <Label>I am a...</Label>
+
                   <RadioGroup
                     value={role}
                     onValueChange={(value) => setRole(value as 'founder' | 'talent')}
@@ -163,14 +163,26 @@ export default function Auth() {
                     <Label
                       htmlFor="founder"
                       className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        role === 'founder' 
-                          ? 'border-primary bg-accent' 
+                        role === 'founder'
+                          ? 'border-primary bg-accent'
                           : 'border-border hover:border-primary/50'
                       }`}
                     >
                       <RadioGroupItem value="founder" id="founder" className="sr-only" />
-                      <Briefcase className={`h-6 w-6 ${role === 'founder' ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <span className={`font-medium ${role === 'founder' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <Briefcase
+                        className={`h-6 w-6 ${
+                          role === 'founder'
+                            ? 'text-primary'
+                            : 'text-muted-foreground'
+                        }`}
+                      />
+                      <span
+                        className={`font-medium ${
+                          role === 'founder'
+                            ? 'text-foreground'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
                         Founder
                       </span>
                       <span className="text-xs text-muted-foreground text-center">
@@ -181,14 +193,26 @@ export default function Auth() {
                     <Label
                       htmlFor="talent"
                       className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        role === 'talent' 
-                          ? 'border-primary bg-accent' 
+                        role === 'talent'
+                          ? 'border-primary bg-accent'
                           : 'border-border hover:border-primary/50'
                       }`}
                     >
                       <RadioGroupItem value="talent" id="talent" className="sr-only" />
-                      <Code className={`h-6 w-6 ${role === 'talent' ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <span className={`font-medium ${role === 'talent' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <Code
+                        className={`h-6 w-6 ${
+                          role === 'talent'
+                            ? 'text-primary'
+                            : 'text-muted-foreground'
+                        }`}
+                      />
+                      <span
+                        className={`font-medium ${
+                          role === 'talent'
+                            ? 'text-foreground'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
                         Talent
                       </span>
                       <span className="text-xs text-muted-foreground text-center">
@@ -210,8 +234,8 @@ export default function Auth() {
                 onClick={() => setIsLogin(!isLogin)}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
-                {isLogin 
-                  ? "Don't have an account? Sign up" 
+                {isLogin
+                  ? "Don't have an account? Sign up"
                   : 'Already have an account? Sign in'}
               </button>
             </div>

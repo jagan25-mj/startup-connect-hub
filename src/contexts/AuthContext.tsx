@@ -52,35 +52,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return response.json();
   };
 
+  // ✅ FIXED: signOut no longer depends on state
+  const signOut = useCallback(async () => {
+    setUser(null);
+    setTokens(null);
+    localStorage.removeItem('auth_tokens');
+  }, []);
+
+  // ✅ FIXED: refreshToken uses localStorage directly to avoid circular dependency
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    // FIXED: Use local variable to avoid race conditions
-    const currentTokens = tokens;
-    if (!currentTokens?.refresh) return false;
+    const storedTokens = localStorage.getItem('auth_tokens');
+    if (!storedTokens) return false;
 
     try {
+      const parsedTokens = JSON.parse(storedTokens);
+      if (!parsedTokens?.refresh) return false;
+
       const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ refresh: currentTokens.refresh }),
+        body: JSON.stringify({ refresh: parsedTokens.refresh }),
       });
 
       if (!response.ok) {
-        await signOut();
+        localStorage.removeItem('auth_tokens');
+        setTokens(null);
+        setUser(null);
         return false;
       }
 
       const data = await response.json();
-      const newTokens = { access: data.access, refresh: currentTokens.refresh };
+      const newTokens = { access: data.access, refresh: parsedTokens.refresh };
       setTokens(newTokens);
       localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
       return true;
     } catch (error) {
-      await signOut();
+      localStorage.removeItem('auth_tokens');
+      setTokens(null);
+      setUser(null);
       return false;
     }
-  }, [tokens, signOut]);
+  }, []); // ✅ FIXED: No dependencies
 
   const signUp = async (email: string, password: string, fullName: string, role: 'founder' | 'talent') => {
     try {
@@ -101,7 +115,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle validation errors properly
         if (data.password) {
           return { error: data.password[0] || 'Password validation failed' };
         }
@@ -147,27 +160,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = useCallback(async () => {
-    setUser(null);
-    setTokens(null);
-    localStorage.removeItem('auth_tokens');
-  }, []);
-
   const refreshProfile = async () => {
-    if (!tokens?.access) return;
+    const storedTokens = localStorage.getItem('auth_tokens');
+    if (!storedTokens) return;
 
     try {
-      const profile = await fetchProfile(tokens.access);
+      const parsedTokens = JSON.parse(storedTokens);
+      if (!parsedTokens?.access) return;
+
+      const profile = await fetchProfile(parsedTokens.access);
       setUser(profile);
     } catch (error) {
-      // Try to refresh token
       const refreshed = await refreshToken();
-      if (refreshed && tokens?.access) {
-        try {
-          const profile = await fetchProfile(tokens.access);
-          setUser(profile);
-        } catch (error) {
-          await signOut();
+      if (refreshed) {
+        const newTokens = localStorage.getItem('auth_tokens');
+        if (newTokens) {
+          try {
+            const parsedNewTokens = JSON.parse(newTokens);
+            const profile = await fetchProfile(parsedNewTokens.access);
+            setUser(profile);
+          } catch (error) {
+            await signOut();
+          }
         }
       } else {
         await signOut();
@@ -175,54 +189,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ✅ FIXED: useEffect runs once on mount with no dependencies
   useEffect(() => {
     const initAuth = async () => {
       console.log('Initializing auth...');
       const storedTokens = localStorage.getItem('auth_tokens');
       if (storedTokens) {
         try {
-          console.log('Found stored tokens, parsing...');
           const parsedTokens = JSON.parse(storedTokens);
           setTokens(parsedTokens);
 
-          // Try to fetch profile with stored token
-          console.log('Fetching profile with stored token...');
-          const profile = await fetchProfile(parsedTokens.access);
-          console.log('Profile fetched successfully:', profile);
-          setUser(profile);
-        } catch (error) {
-          console.error('Error fetching profile with stored token:', error);
-          // Token might be expired, try refresh
-          setTokens(JSON.parse(storedTokens));
-          console.log('Trying to refresh token...');
-          const refreshed = await refreshToken();
-          if (refreshed) {
-            try {
-              const newTokens = JSON.parse(localStorage.getItem('auth_tokens') || '{}');
-              console.log('Token refreshed, fetching profile...');
-              const profile = await fetchProfile(newTokens.access);
-              console.log('Profile fetched after refresh:', profile);
-              setUser(profile);
-            } catch (error) {
-              console.error('Error fetching profile after refresh:', error);
+          try {
+            const profile = await fetchProfile(parsedTokens.access);
+            setUser(profile);
+          } catch (error) {
+            console.error('Error fetching profile with stored token:', error);
+            
+            // Try to refresh token
+            const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ refresh: parsedTokens.refresh }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              const newTokens = { access: data.access, refresh: parsedTokens.refresh };
+              setTokens(newTokens);
+              localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
+              
+              try {
+                const profile = await fetchProfile(newTokens.access);
+                setUser(profile);
+              } catch (error) {
+                console.error('Error fetching profile after refresh:', error);
+                localStorage.removeItem('auth_tokens');
+                setTokens(null);
+              }
+            } else {
               localStorage.removeItem('auth_tokens');
               setTokens(null);
             }
-          } else {
-            console.log('Token refresh failed');
-            localStorage.removeItem('auth_tokens');
-            setTokens(null);
           }
+        } catch (error) {
+          console.error('Error parsing stored tokens:', error);
+          localStorage.removeItem('auth_tokens');
         }
-      } else {
-        console.log('No stored tokens found');
       }
-      console.log('Auth initialization complete');
       setLoading(false);
     };
 
     initAuth();
-  }, [refreshToken]);
+  }, []); // ✅ FIXED: Empty dependency array - runs once on mount
 
   return (
     <AuthContext.Provider value={{
