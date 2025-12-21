@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,7 +65,7 @@ export default function Startups() {
 
   const isFounder = user?.role === 'founder';
 
-  const fetchStartups = async () => {
+  const fetchStartups = useCallback(async () => {
     if (!tokens?.access) return;
 
     try {
@@ -86,13 +86,13 @@ export default function Startups() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tokens, isFounder]);
 
   useEffect(() => {
     if (user && tokens) {
       fetchStartups();
     }
-  }, [user, tokens]);
+  }, [user, tokens, fetchStartups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -4,11 +4,12 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
-from .models import Startup
+from .models import Startup, StartupInterest
 from .serializers import (
     StartupSerializer,
     StartupCreateSerializer,
     StartupUpdateSerializer,
+    StartupInterestSerializer,
 )
 from accounts.models import User
 
@@ -23,6 +24,26 @@ class IsOwnerOrReadOnly(IsAuthenticated):
             return True
         
         # Write permissions are only allowed to the owner
+        return obj.owner == request.user
+
+
+class IsTalent(IsAuthenticated):
+    """
+    Custom permission to only allow talent users.
+    """
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and request.user.role == User.Role.TALENT
+
+
+class IsFounderAndOwner(IsAuthenticated):
+    """
+    Custom permission to only allow founders to view interests for their startups.
+    """
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and request.user.role == User.Role.FOUNDER
+    
+    def has_object_permission(self, request, view, obj):
+        # Only founder owners can view interests for their startup
         return obj.owner == request.user
 
 
@@ -148,3 +169,80 @@ class MyStartupsView(generics.ListAPIView):
     def get_queryset(self):
         """Return startups owned by the current user."""
         return Startup.objects.filter(owner=self.request.user).select_related('owner')
+
+
+class StartupInterestCreateDestroyView(generics.CreateAPIView, generics.DestroyAPIView):
+    """
+    Create or delete interest in a startup.
+    
+    POST /api/startups/<id>/interest/
+    DELETE /api/startups/<id>/interest/
+    """
+    serializer_class = StartupInterestSerializer
+    permission_classes = [IsTalent]
+    
+    def get_queryset(self):
+        """Return interests for the current user."""
+        return StartupInterest.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        """Create interest with current user and startup."""
+        startup = get_object_or_404(Startup, id=self.kwargs['startup_id'])
+        serializer.save(user=self.request.user, startup=startup)
+    
+    def create(self, request, *args, **kwargs):
+        """Override to check for existing interest."""
+        startup = get_object_or_404(Startup, id=self.kwargs['startup_id'])
+        
+        # Check if interest already exists
+        if StartupInterest.objects.filter(user=request.user, startup=startup).exists():
+            return Response({
+                'message': 'You have already expressed interest in this startup.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return super().create(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Delete interest if it exists."""
+        startup = get_object_or_404(Startup, id=self.kwargs['startup_id'])
+        
+        try:
+            interest = StartupInterest.objects.get(user=request.user, startup=startup)
+            interest.delete()
+            return Response({
+                'message': 'Interest withdrawn successfully!'
+            }, status=status.HTTP_200_OK)
+        except StartupInterest.DoesNotExist:
+            return Response({
+                'message': 'You have not expressed interest in this startup.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StartupInterestsListView(generics.ListAPIView):
+    """
+    List all interests for a specific startup.
+    
+    GET /api/startups/<id>/interests/
+    """
+    serializer_class = StartupInterestSerializer
+    permission_classes = [IsFounderAndOwner]
+    
+    def get_queryset(self):
+        """Return interests for the startup, only if user is the owner."""
+        startup = get_object_or_404(Startup, id=self.kwargs['startup_id'])
+        self.check_object_permissions(self.request, startup)
+        return StartupInterest.objects.filter(startup=startup).select_related('user', 'startup')
+
+
+class MyInterestsView(generics.ListAPIView):
+    """
+    List all interests expressed by the current user.
+    
+    GET /api/my/interests/
+    """
+    serializer_class = StartupInterestSerializer
+    permission_classes = [IsTalent]
+    
+    def get_queryset(self):
+        """Return interests for the current user."""
+        return StartupInterest.objects.filter(user=self.request.user).select_related('user', 'startup')

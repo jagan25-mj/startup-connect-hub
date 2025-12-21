@@ -10,7 +10,10 @@ from .serializers import (
     UserLoginSerializer,
     UserProfileSerializer,
     UserUpdateSerializer,
+    ProfileSerializer,
+    ProfileUpdateSerializer,
 )
+from .models import Profile
 
 User = get_user_model()
 
@@ -50,9 +53,8 @@ def register_view(request):
             'message': 'Account created successfully!'
         }, status=status.HTTP_201_CREATED)
     
-    return Response({
-        'error': serializer.errors
-    }, status=status.HTTP_400_BAD_REQUEST)
+    # FIXED: Return serializer errors directly for better frontend handling
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
@@ -182,3 +184,41 @@ class UserDetailView(generics.RetrieveAPIView):
     queryset = User.objects.filter(is_active=True)
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
+
+
+class ProfileDetailView(generics.RetrieveAPIView):
+    """
+    Get a user's profile.
+    
+    GET /api/profiles/<uuid:user_id>/
+    """
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'user_id'
+    lookup_url_kwarg = 'user_id'
+    
+    def get_queryset(self):
+        """Return profiles for active users."""
+        return Profile.objects.select_related('user').filter(user__is_active=True)
+
+
+class ProfileUpdateView(generics.RetrieveUpdateAPIView):
+    """
+    Get and update the current user's profile.
+    
+    GET /api/profiles/me/
+    PUT /api/profiles/me/
+    """
+    serializer_class = ProfileUpdateSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        """Return the current user's profile."""
+        profile, created = Profile.objects.get_or_create(user=self.request.user)
+        return profile
+    
+    def get_serializer_class(self):
+        """Use different serializer for GET vs PUT."""
+        if self.request.method == 'GET':
+            return ProfileSerializer
+        return ProfileUpdateSerializer

@@ -31,6 +31,12 @@ class Startup(models.Model):
         ordering = ['-created_at']
         verbose_name = 'Startup'
         verbose_name_plural = 'Startups'
+        indexes = [
+            models.Index(fields=['owner']),
+            models.Index(fields=['industry']),
+            models.Index(fields=['stage']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
         return self.name
@@ -44,3 +50,37 @@ class Startup(models.Model):
     def is_owned_by(self):
         """Helper to check ownership."""
         return self.owner
+
+
+class StartupInterest(models.Model):
+    """
+    Model representing a talent's interest in a startup.
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='startup_interests'
+    )
+    startup = models.ForeignKey(
+        Startup,
+        on_delete=models.CASCADE,
+        related_name='interests'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'startup_interests'
+        ordering = ['-created_at']
+        verbose_name = 'Startup Interest'
+        verbose_name_plural = 'Startup Interests'
+        unique_together = ['user', 'startup']
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['startup']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.get_full_name()} interested in {self.startup.name}"

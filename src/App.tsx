@@ -11,7 +11,11 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
-import Startups from "./pages/Startups";
+import EditProfile from "./pages/EditProfile";
+import StartupsList from "./pages/StartupsList";
+import CreateStartup from "./pages/CreateStartup";
+import StartupDetail from "./pages/StartupDetail";
+import EditStartup from "./pages/EditStartup";
 import Status from "./pages/Status";
 import NotFound from "./pages/NotFound";
 
@@ -36,7 +40,7 @@ const App = () => (
               }
             />
             <Route
-              path="/profile"
+              path="/profile/:id"
               element={
                 <ProtectedRoute>
                   <Profile />
@@ -44,10 +48,42 @@ const App = () => (
               }
             />
             <Route
+              path="/profile/edit"
+              element={
+                <ProtectedRoute>
+                  <EditProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/startups"
               element={
                 <ProtectedRoute>
-                  <Startups />
+                  <StartupsList />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/startups/create"
+              element={
+                <ProtectedRoute>
+                  <CreateStartup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/startups/:id"
+              element={
+                <ProtectedRoute>
+                  <StartupDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/startups/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <EditStartup />
                 </ProtectedRoute>
               }
             />

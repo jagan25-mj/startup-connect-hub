@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.conf import settings
 import uuid
 
 
@@ -75,6 +76,11 @@ class User(AbstractUser):
         ordering = ['-created_at']
         verbose_name = 'User'
         verbose_name_plural = 'Users'
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['role']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
         return self.email
@@ -96,3 +102,39 @@ class User(AbstractUser):
     def get_short_name(self):
         """Return the short name for the user."""
         return self.full_name.split()[0] if self.full_name else self.email.split('@')[0]
+
+
+class Profile(models.Model):
+    """
+    User profile model for additional information.
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+    bio = models.TextField(blank=True, null=True)
+    skills = models.JSONField(default=list, blank=True)  # Array of skills
+    experience = models.TextField(blank=True, null=True)
+    github_url = models.URLField(blank=True, null=True, max_length=500)
+    linkedin_url = models.URLField(blank=True, null=True, max_length=500)
+    website_url = models.URLField(blank=True, null=True, max_length=500)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'profiles'
+        ordering = ['-created_at']
+        verbose_name = 'Profile'
+        verbose_name_plural = 'Profiles'
+        indexes = [
+            models.Index(fields=['user']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.get_full_name()}'s profile"

@@ -15,4 +15,8 @@ urlpatterns = [
     # User discovery endpoints
     path('users/', views.UserListView.as_view(), name='user-list'),
     path('users/<uuid:pk>/', views.UserDetailView.as_view(), name='user-detail'),
+    
+    # Profile endpoints
+    path('profiles/<uuid:user_id>/', views.ProfileDetailView.as_view(), name='profile-detail'),
+    path('profiles/me/', views.ProfileUpdateView.as_view(), name='profile-me'),
 ]

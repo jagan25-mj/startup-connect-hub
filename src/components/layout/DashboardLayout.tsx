@@ -30,7 +30,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: User, label: 'Profile', href: '/profile' },
+    { icon: User, label: 'Profile', href: user?.id ? `/profile/${user.id}` : '/dashboard' },
     ...(user?.role === 'founder' 
       ? [{ icon: Rocket, label: 'My Startups', href: '/startups' }] 
       : [{ icon: Rocket, label: 'Explore Startups', href: '/startups' }]

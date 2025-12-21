@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 interface Profile {
   id: string;
@@ -52,8 +52,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return response.json();
   };
 
-  const refreshToken = async (): Promise<boolean> => {
-    if (!tokens?.refresh) return false;
+  const refreshToken = useCallback(async (): Promise<boolean> => {
+    // FIXED: Use local variable to avoid race conditions
+    const currentTokens = tokens;
+    if (!currentTokens?.refresh) return false;
 
     try {
       const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
@@ -61,24 +63,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ refresh: tokens.refresh }),
+        body: JSON.stringify({ refresh: currentTokens.refresh }),
       });
 
       if (!response.ok) {
-        signOut();
+        await signOut();
         return false;
       }
 
       const data = await response.json();
-      const newTokens = { access: data.access, refresh: tokens.refresh };
+      const newTokens = { access: data.access, refresh: currentTokens.refresh };
       setTokens(newTokens);
       localStorage.setItem('auth_tokens', JSON.stringify(newTokens));
       return true;
     } catch (error) {
-      signOut();
+      await signOut();
       return false;
     }
-  };
+  }, [tokens, signOut]);
 
   const signUp = async (email: string, password: string, fullName: string, role: 'founder' | 'talent') => {
     try {
@@ -99,7 +101,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        return { error: data.error || 'Registration failed' };
+        // Handle validation errors properly
+        if (data.password) {
+          return { error: data.password[0] || 'Password validation failed' };
+        }
+        if (data.email) {
+          return { error: data.email[0] || 'Email validation failed' };
+        }
+        return { error: data.error || data.detail || 'Registration failed' };
       }
 
       setUser(data.user);
@@ -107,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('auth_tokens', JSON.stringify(data.tokens));
       return { error: null };
     } catch (error) {
+      console.error('Sign up error:', error);
       return { error: 'Network error' };
     }
   };
@@ -124,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        return { error: data.error || 'Login failed' };
+        return { error: data.error || data.detail || 'Login failed' };
       }
 
       setUser(data.user);
@@ -132,15 +142,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('auth_tokens', JSON.stringify(data.tokens));
       return { error: null };
     } catch (error) {
+      console.error('Sign in error:', error);
       return { error: 'Network error' };
     }
   };
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setUser(null);
     setTokens(null);
     localStorage.removeItem('auth_tokens');
-  };
+  }, []);
 
   const refreshProfile = async () => {
     if (!tokens?.access) return;
@@ -156,10 +167,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = await fetchProfile(tokens.access);
           setUser(profile);
         } catch (error) {
-          signOut();
+          await signOut();
         }
       } else {
-        signOut();
+        await signOut();
       }
     }
   };
@@ -176,17 +187,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const profile = await fetchProfile(parsedTokens.access);
           setUser(profile);
         } catch (error) {
-          // Try to refresh token
+          // Token might be expired, try refresh
+          setTokens(JSON.parse(storedTokens));
           const refreshed = await refreshToken();
-          if (refreshed && tokens?.access) {
+          if (refreshed) {
             try {
-              const profile = await fetchProfile(tokens.access);
+              const newTokens = JSON.parse(localStorage.getItem('auth_tokens') || '{}');
+              const profile = await fetchProfile(newTokens.access);
               setUser(profile);
             } catch (error) {
               localStorage.removeItem('auth_tokens');
+              setTokens(null);
             }
           } else {
             localStorage.removeItem('auth_tokens');
+            setTokens(null);
           }
         }
       }
@@ -194,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     initAuth();
-  }, []);
+  }, [refreshToken]);
 
   return (
     <AuthContext.Provider value={{

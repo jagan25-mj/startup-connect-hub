@@ -13,6 +13,13 @@ interface Stats {
   myStartups: number;
 }
 
+interface Interest {
+  id: string;
+  startup_id: string;
+  startup_name: string;
+  created_at: string;
+}
+
 const API_BASE_URL = 'http://localhost:8000/api';
 
 export default function Dashboard() {
@@ -24,6 +31,7 @@ export default function Dashboard() {
     myStartups: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [interests, setInterests] = useState<Interest[]>([]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -45,9 +53,9 @@ export default function Dashboard() {
             'Authorization': `Bearer ${tokens.access}`,
           },
         });
-        const usersData = await usersResponse.json();
-        const totalFounders = usersData.filter((u: any) => u.role === 'founder').length;
-        const totalTalent = usersData.filter((u: any) => u.role === 'talent').length;
+        const usersData: { role: string }[] = await usersResponse.json();
+        const totalFounders = usersData.filter((u) => u.role === 'founder').length;
+        const totalTalent = usersData.filter((u) => u.role === 'talent').length;
 
         // Fetch my startups (if founder)
         let myStartups = 0;
@@ -61,12 +69,26 @@ export default function Dashboard() {
           myStartups = myStartupsData.length || 0;
         }
 
+        // Fetch my interests (if talent)
+        let myInterests: Interest[] = [];
+        if (user?.role === 'talent') {
+          const interestsResponse = await fetch(`${API_BASE_URL}/my/interests/`, {
+            headers: {
+              'Authorization': `Bearer ${tokens.access}`,
+            },
+          });
+          if (interestsResponse.ok) {
+            myInterests = await interestsResponse.json();
+          }
+        }
+
         setStats({
           totalStartups,
           totalFounders,
           totalTalent,
           myStartups,
         });
+        setInterests(myInterests);
       } catch (error) {
         console.error('Error fetching stats:', error);
       } finally {
@@ -107,6 +129,13 @@ export default function Dashboard() {
       icon: TrendingUp, 
       color: 'text-warning',
       bgColor: 'bg-warning/10'
+    }] : []),
+    ...(user?.role === 'talent' ? [{
+      title: 'My Interests', 
+      value: interests.length, 
+      icon: Rocket, 
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-100'
     }] : []),
   ];
 
@@ -170,7 +199,7 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
-              <Link to="/profile">
+              <Link to={user?.id ? `/profile/${user.id}` : '/dashboard'}>
                 <Button variant="outline" className="w-full justify-between">
                   Complete your profile
                   <ArrowRight className="h-4 w-4" />
@@ -190,6 +219,43 @@ export default function Dashboard() {
               </Link>
             </CardContent>
           </Card>
+
+          {user?.role === 'talent' && interests.length > 0 && (
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="font-display">My Interests</CardTitle>
+                <CardDescription>
+                  Startups you've expressed interest in
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {interests.slice(0, 3).map((interest) => (
+                    <div key={interest.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-sm">{interest.startup_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Interested {new Date(interest.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Link to={`/startups/${interest.startup_id}`}>
+                        <Button variant="outline" size="sm">
+                          View
+                        </Button>
+                      </Link>
+                    </div>
+                  ))}
+                  {interests.length > 3 && (
+                    <Link to="/startups">
+                      <Button variant="outline" className="w-full">
+                        View All Interests
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="shadow-card">
             <CardHeader>

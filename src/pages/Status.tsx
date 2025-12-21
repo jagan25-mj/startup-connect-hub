@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,7 @@ export default function Status() {
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
-  const runHealthChecks = async () => {
+  const runHealthChecks = useCallback(async () => {
     setLoading(true);
     const results: HealthCheck[] = [];
 
@@ -97,13 +97,13 @@ export default function Status() {
     setChecks(results);
     setLastChecked(new Date());
     setLoading(false);
-  };
+  }, [tokens]);
 
   useEffect(() => {
     runHealthChecks();
     const interval = setInterval(runHealthChecks, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [runHealthChecks]);
 
   const getStatusIcon = (status: HealthCheck['status']) => {
     switch (status) {

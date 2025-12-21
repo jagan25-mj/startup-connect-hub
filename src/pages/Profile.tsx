@@ -1,243 +1,255 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from 'sonner';
-import { User, Mail, Save, X, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
+import { User, Mail, Github, Linkedin, Globe, Edit, Building, Briefcase, Calendar } from 'lucide-react';
+
+interface Profile {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_full_name: string;
+  user_role: string;
+  bio: string | null;
+  skills: string[];
+  experience: string | null;
+  github_url: string | null;
+  linkedin_url: string | null;
+  website_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
 export default function Profile() {
-  const { user, tokens, refreshProfile } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: user?.full_name || '',
-    bio: user?.bio || '',
-    skills: user?.skills || [],
-  });
-  const [newSkill, setNewSkill] = useState('');
+  const { id } = useParams<{ id: string }>();
+  const { user, tokens } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleSave = async () => {
-    if (!user || !tokens) return;
-    setLoading(true);
+  const isOwnProfile = user?.id === id;
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/me/`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          bio: formData.bio,
-          skills: formData.skills,
-        }),
-      });
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!tokens?.access || !id) return;
 
-      if (!response.ok) throw new Error('Failed to update profile');
+      try {
+        const response = await fetch(`${API_BASE_URL}/profiles/${id}/`, {
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+          },
+        });
 
-      await refreshProfile();
-      toast.success('Profile updated successfully!');
-      setIsEditing(false);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
-    } finally {
-      setLoading(false);
-    }
-  };
+        if (!response.ok) {
+          if (response.status === 404) {
+            toast.error('Profile not found');
+            return;
+          }
+          throw new Error('Failed to fetch profile');
+        }
 
-  const addSkill = () => {
-    if (newSkill.trim() && !formData.skills.includes(newSkill.trim())) {
-      setFormData({
-        ...formData,
-        skills: [...formData.skills, newSkill.trim()],
-      });
-      setNewSkill('');
-    }
-  };
+        const data = await response.json();
+        setProfile(data);
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        toast.error('Failed to load profile');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const removeSkill = (skillToRemove: string) => {
-    setFormData({
-      ...formData,
-      skills: formData.skills.filter((skill) => skill !== skillToRemove),
-    });
-  };
+    fetchProfile();
+  }, [tokens, id]);
 
-  const handleCancel = () => {
-    setFormData({
-      full_name: user?.full_name || '',
-      bio: user?.bio || '',
-      skills: user?.skills || [],
-    });
-    setIsEditing(false);
-  };
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+          <User className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">Profile not found</h3>
+          <p className="text-muted-foreground mb-4">The profile you're looking for doesn't exist.</p>
+          <Link to="/dashboard">
+            <Button>Back to Dashboard</Button>
+          </Link>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Profile</h1>
-            <p className="text-muted-foreground mt-1">Manage your personal information</p>
-          </div>
-          {!isEditing ? (
-            <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleCancel}>
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={loading}>
-                <Save className="h-4 w-4 mr-2" />
-                {loading ? 'Saving...' : 'Save'}
-              </Button>
+      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-3xl font-display font-bold text-foreground">
+                  {profile.user_full_name}
+                </h1>
+                <p className="text-muted-foreground mt-1 flex items-center gap-2">
+                  <Mail className="h-4 w-4" />
+                  {profile.user_email}
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant={profile.user_role === 'founder' ? 'default' : 'secondary'}>
+                    {profile.user_role === 'founder' ? 'Founder' : 'Talent'}
+                  </Badge>
+                </div>
+              </div>
+              {isOwnProfile && (
+                <Link to="/profile/edit">
+                  <Button variant="outline" size="sm">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Profile
+                  </Button>
+                </Link>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Profile Header */}
-        <Card className="shadow-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-6">
-              <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-soft">
-                {user?.full_name?.charAt(0) || 'U'}
-              </div>
-              <div className="flex-1">
-                {isEditing ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input
-                      id="fullName"
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      placeholder="Your full name"
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <h2 className="text-2xl font-display font-bold text-foreground">
-                      {user?.full_name || 'No name set'}
-                    </h2>
-                    <p className="text-muted-foreground flex items-center gap-2 mt-1">
-                      <Mail className="h-4 w-4" />
-                      {user?.email}
-                    </p>
-                    <span className="inline-block mt-2 px-3 py-1 bg-accent text-accent-foreground text-sm font-medium rounded-full capitalize">
-                      {user?.role}
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Bio Section */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2">
-              <User className="h-5 w-5" />
-              About
-            </CardTitle>
-            <CardDescription>Tell others about yourself</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isEditing ? (
-              <Textarea
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                placeholder="Write a brief bio about yourself..."
-                rows={4}
-              />
-            ) : (
-              <p className="text-foreground">
-                {user?.bio || 'No bio added yet. Click Edit Profile to add one.'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Skills Section (for Talent) */}
-        {user?.role === 'talent' && (
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="font-display">Skills</CardTitle>
-              <CardDescription>Highlight your expertise</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isEditing && (
-                <div className="flex gap-2">
-                  <Input
-                    value={newSkill}
-                    onChange={(e) => setNewSkill(e.target.value)}
-                    placeholder="Add a skill..."
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
-                  />
-                  <Button type="button" onClick={addSkill} size="icon">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {(isEditing ? formData.skills : user?.skills || []).map((skill) => (
-                  <Badge key={skill} variant="secondary" className="gap-1">
-                    {skill}
-                    {isEditing && (
-                      <button
-                        onClick={() => removeSkill(skill)}
-                        className="ml-1 hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </Badge>
-                ))}
-                {(!isEditing && (!profile?.skills || profile.skills.length === 0)) && (
-                  <p className="text-muted-foreground text-sm">
-                    No skills added yet. Click Edit Profile to add some.
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="md:col-span-2 space-y-6">
+            {profile.bio && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="font-display">About</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-foreground leading-relaxed">
+                    {profile.bio}
                   </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                </CardContent>
+              </Card>
+            )}
 
-        {/* Account Info */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="font-display">Account Information</CardTitle>
-            <CardDescription>Your account details</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Member since</p>
-                <p className="font-medium text-foreground">
-                  {profile?.created_at 
-                    ? new Date(profile.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })
-                    : '-'}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Account type</p>
-                <p className="font-medium text-foreground capitalize">{profile?.role}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            {profile.experience && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="font-display flex items-center gap-2">
+                    <Briefcase className="h-5 w-5" />
+                    Experience
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-foreground leading-relaxed">
+                    {profile.experience}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {profile.skills && profile.skills.length > 0 && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="font-display">Skills</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.skills.map((skill, index) => (
+                      <Badge key={index} variant="secondary">
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            {(profile.github_url || profile.linkedin_url || profile.website_url) && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="font-display">Links</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {profile.github_url && (
+                    <a
+                      href={profile.github_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <Github className="h-4 w-4" />
+                      GitHub
+                    </a>
+                  )}
+                  {profile.linkedin_url && (
+                    <a
+                      href={profile.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <Linkedin className="h-4 w-4" />
+                      LinkedIn
+                    </a>
+                  )}
+                  {profile.website_url && (
+                    <a
+                      href={profile.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-primary hover:underline"
+                    >
+                      <Globe className="h-4 w-4" />
+                      Website
+                    </a>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="font-display">Profile Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Member since
+                  </p>
+                  <p className="text-sm text-foreground mt-1">
+                    {new Date(profile.created_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Last updated</p>
+                  <p className="text-sm text-foreground mt-1">
+                    {new Date(profile.updated_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

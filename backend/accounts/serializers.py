@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User
+from .models import User, Profile
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -33,11 +33,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'password': 'Passwords do not match.'
             })
+        # FIXED: Remove password_confirm before returning
+        attrs.pop('password_confirm')
         return attrs
     
     def validate_email(self, value):
         """Validate that email is unique."""
         if User.objects.filter(email=value.lower()).exists():
+            # SECURITY NOTE: This reveals if email exists
+            # Consider using generic message in production
             raise serializers.ValidationError(
                 'A user with this email already exists.'
             )
@@ -53,7 +57,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Create and return a new user."""
-        validated_data.pop('password_confirm')
         password = validated_data.pop('password')
         
         user = User.objects.create_user(
@@ -142,4 +145,71 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         """Validate that skills is a list."""
         if value is not None and not isinstance(value, list):
             raise serializers.ValidationError('Skills must be a list.')
+        return value
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    """Serializer for viewing profiles."""
+    
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_full_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    user_role = serializers.CharField(source='user.role', read_only=True)
+    
+    class Meta:
+        model = Profile
+        fields = [
+            'id',
+            'user_id',
+            'user_email',
+            'user_full_name',
+            'user_role',
+            'bio',
+            'skills',
+            'experience',
+            'github_url',
+            'linkedin_url',
+            'website_url',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'user_id', 'user_email', 'user_full_name', 'user_role', 'created_at', 'updated_at']
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating profiles."""
+    
+    class Meta:
+        model = Profile
+        fields = [
+            'bio',
+            'skills',
+            'experience',
+            'github_url',
+            'linkedin_url',
+            'website_url',
+        ]
+    
+    def validate_skills(self, value):
+        """Validate that skills is a list."""
+        if value is not None and not isinstance(value, list):
+            raise serializers.ValidationError('Skills must be a list.')
+        return value
+    
+    def validate_github_url(self, value):
+        """Validate GitHub URL format."""
+        if value and not (value.startswith('http://') or value.startswith('https://')):
+            raise serializers.ValidationError('GitHub URL must start with http:// or https://')
+        return value
+    
+    def validate_linkedin_url(self, value):
+        """Validate LinkedIn URL format."""
+        if value and not (value.startswith('http://') or value.startswith('https://')):
+            raise serializers.ValidationError('LinkedIn URL must start with http:// or https://')
+        return value
+    
+    def validate_website_url(self, value):
+        """Validate website URL format."""
+        if value and not (value.startswith('http://') or value.startswith('https://')):
+            raise serializers.ValidationError('Website URL must start with http:// or https://')
         return value

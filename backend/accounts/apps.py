@@ -8,5 +8,4 @@ class AccountsConfig(AppConfig):
     
     def ready(self):
         """Import signals when the app is ready."""
-        # You can import signals here if needed in the future
-        pass
+        import accounts.signals  # noqa
