@@ -2,63 +2,73 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Rocket, Globe, Building, ExternalLink } from 'lucide-react';
-
-interface Startup {
-  id: string;
-  name: string;
-  description: string | null;
-  industry: string | null;
-  stage: string | null;
-  website: string | null;
-  owner_id: string;
-  owner_name: string;
-  interest_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { apiClient } from '@/lib/apiClient';
+import type { Startup, PaginatedResponse } from '@/types/api';
 
 export default function StartupsList() {
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const [startups, setStartups] = useState<Startup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
 
   const isFounder = user?.role === 'founder';
+  const pageSize = 20; // Match backend PAGE_SIZE
 
-  const fetchStartups = useCallback(async () => {
-    if (!tokens?.access) return;
-
+  const fetchStartups = useCallback(async (page: number = 1) => {
+    setLoading(true);
     try {
-      const endpoint = isFounder ? `${API_BASE_URL}/startups/my/` : `${API_BASE_URL}/startups/`;
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-        },
-      });
+      const endpoint = isFounder 
+        ? `/startups/my/`
+        : `/startups/?page=${page}`;
+      
+      const data = await apiClient.get<PaginatedResponse<Startup> | Startup[]>(endpoint);
 
-      if (!response.ok) throw new Error('Failed to fetch startups');
-
-      const data = await response.json();
-      setStartups(Array.isArray(data) ? data : data.results || []);
-    } catch (error) {
+      // Handle paginated response
+      if ('results' in data) {
+        setStartups(data.results);
+        setHasNext(data.next !== null);
+        setHasPrevious(data.previous !== null);
+        setTotalPages(Math.ceil(data.count / pageSize));
+      } else {
+        // Handle array response (my startups)
+        setStartups(data);
+        setHasNext(false);
+        setHasPrevious(false);
+        setTotalPages(1);
+      }
+    } catch (error: any) {
       console.error('Error fetching startups:', error);
-      toast.error('Failed to load startups');
+      toast.error(error.message || 'Failed to load startups');
     } finally {
       setLoading(false);
     }
-  }, [tokens, isFounder]);
+  }, [isFounder, pageSize]);
 
   useEffect(() => {
-    if (user && tokens) {
-      fetchStartups();
+    fetchStartups(currentPage);
+  }, [fetchStartups, currentPage]);
+
+  const handleNextPage = () => {
+    if (hasNext) {
+      setCurrentPage(prev => prev + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [user, tokens, fetchStartups]);
+  };
+
+  const handlePreviousPage = () => {
+    if (hasPrevious) {
+      setCurrentPage(prev => prev - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   if (loading) {
     return (
@@ -119,69 +129,95 @@ export default function StartupsList() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {startups.map((startup) => (
-              <Card key={startup.id} className="shadow-card hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="font-display text-xl line-clamp-1">
-                        {startup.name}
-                      </CardTitle>
-                      <CardDescription className="flex items-center gap-2 mt-1">
-                        <Building className="h-4 w-4" />
-                        {startup.owner_name}
-                      </CardDescription>
+          <>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {startups.map((startup) => (
+                <Card key={startup.id} className="shadow-card hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="font-display text-xl line-clamp-1">
+                          {startup.name}
+                        </CardTitle>
+                        <p className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                          <Building className="h-4 w-4" />
+                          {startup.owner_name}
+                        </p>
+                      </div>
+                      {startup.website && (
+                        <a
+                          href={startup.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
                     </div>
-                    {startup.website && (
-                      <a
-                        href={startup.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {startup.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {startup.description}
+                      </p>
                     )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {startup.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {startup.description}
-                    </p>
-                  )}
 
-                  <div className="flex flex-wrap gap-2">
-                    {startup.industry && (
-                      <Badge variant="secondary" className="text-xs">
-                        {startup.industry}
-                      </Badge>
-                    )}
-                    {startup.stage && (
+                    <div className="flex flex-wrap gap-2">
+                      {startup.industry && (
+                        <Badge variant="secondary" className="text-xs">
+                          {startup.industry}
+                        </Badge>
+                      )}
+                      {startup.stage && (
+                        <Badge variant="outline" className="text-xs">
+                          {startup.stage}
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="text-xs">
-                        {startup.stage}
+                        {startup.interest_count} interested
                       </Badge>
-                    )}
-                    <Badge variant="outline" className="text-xs">
-                      {startup.interest_count} interested
-                    </Badge>
-                  </div>
+                    </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(startup.created_at).toLocaleDateString()}
-                    </span>
-                    <Link to={`/startups/${startup.id}`}>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(startup.created_at).toLocaleDateString()}
+                      </span>
+                      <Link to={`/startups/${startup.id}`}>
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {!isFounder && totalPages > 1 && (
+              <div className="flex items-center justify-center gap-4 mt-8">
+                <Button
+                  variant="outline"
+                  onClick={handlePreviousPage}
+                  disabled={!hasPrevious}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  onClick={handleNextPage}
+                  disabled={!hasNext}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </DashboardLayout>

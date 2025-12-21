@@ -1,73 +1,223 @@
-# Welcome to your Lovable project
+Startup Connect Hub 🚀
+A full-stack platform connecting startup founders with talented co-founders and professionals. Built with Django (backend) and React + Vite (frontend).
 
-## Project info
+📋 Features
+✅ Implemented (Phases 1-4)
+Authentication & Profiles (Phase 1)
+JWT-based email/password authentication
+Role-based access (Founder/Talent)
+Extended profiles with skills, experience, social links
+Startup Management (Phase 2)
+Full CRUD operations for startups
+Founder-only creation
+Rich startup profiles (industry, stage, website)
+Startup Discovery (Phase 3)
+Browse all startups
+Filter by industry and stage
+Pagination support
+Interest System (Phase 4)
+Talent can express interest in startups
+Founders can view interested candidates
+Interest tracking and management
+🛠 Tech Stack
+Backend
+Django 4.2.7
+Django REST Framework
+JWT Authentication (djangorestframework-simplejwt)
+SQLite (default, PostgreSQL-ready)
+CORS configured
+Frontend
+React 18.3.1
+TypeScript 5.8.3
+Vite 5.4.19
+Tailwind CSS 3.4.17
+Shadcn UI components
+React Router 6.30.1
+📦 Installation
+Prerequisites
+Python 3.10+
+Node.js 18+
+npm or yarn
+Backend Setup
+Navigate to backend directory
+bash
+   cd backend
+Create virtual environment
+bash
+   python -m venv venv
+   
+   # On Windows
+   venv\Scripts\activate
+   
+   # On macOS/Linux
+   source venv/bin/activate
+Install dependencies
+bash
+   pip install -r requirements.txt
+Configure environment (optional)
+bash
+   # Copy example env file
+   cp .env.example .env
+   
+   # Edit .env and set:
+   # - SECRET_KEY (generate new one for production)
+   # - DEBUG (False in production)
+   # - ALLOWED_HOSTS (your domain)
+Run migrations
+bash
+   python manage.py migrate
+Create superuser (optional)
+bash
+   python manage.py createsuperuser
+Start development server
+bash
+   python manage.py runserver
+Backend will run at http://localhost:8000
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+Frontend Setup
+Navigate to frontend directory
+bash
+   cd .. # from backend directory
+Install dependencies
+bash
+   npm install
+Configure environment
+bash
+   # Copy example env file
+   cp .env.example .env
+   
+   # Edit .env and set:
+   VITE_API_BASE_URL=http://localhost:8000/api
+Start development server
+bash
+   npm run dev
+Frontend will run at http://localhost:5173
 
-## How can I edit this code?
+🚀 Production Deployment
+Backend
+Set environment variables
+bash
+   export SECRET_KEY='your-secret-key'
+   export DEBUG=False
+   export ALLOWED_HOSTS='yourdomain.com'
+Collect static files
+bash
+   python manage.py collectstatic
+Use production WSGI server
+bash
+   pip install gunicorn
+   gunicorn startup_platform.wsgi:application
+Frontend
+Set production API URL
+bash
+   # In .env or build environment
+   VITE_API_BASE_URL=https://api.yourdomain.com/api
+Build for production
+bash
+   npm run build
+Serve dist/ folder
+Use Nginx, Apache, or CDN
+Ensure proper routing for SPA
+📝 Environment Variables
+Backend (.env)
+env
+SECRET_KEY=your-django-secret-key
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+DATABASE_URL=sqlite:///db.sqlite3  # Optional
+Frontend (.env)
+env
+VITE_API_BASE_URL=http://localhost:8000/api
+🏗 Project Structure
+startup-connect-hub/
+├── backend/
+│   ├── accounts/          # User authentication & profiles
+│   ├── startups/          # Startup CRUD & interests
+│   ├── startup_platform/  # Django settings
+│   ├── manage.py
+│   └── requirements.txt
+├── src/
+│   ├── components/        # Reusable UI components
+│   ├── contexts/          # React contexts (Auth)
+│   ├── lib/              # Utilities (API client, config)
+│   ├── pages/            # Route pages
+│   ├── types/            # TypeScript definitions
+│   └── main.tsx
+├── .env.example
+├── package.json
+└── README.md
+🔧 Development
+Running Tests
+Backend
 
-There are several ways of editing your application.
+bash
+cd backend
+python manage.py test
+Frontend
 
-**Use Lovable**
+bash
+npm run test  # Add test script as needed
+Code Quality
+Backend
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+bash
+# Format with black
+black .
 
-Changes made via Lovable will be committed automatically to this repo.
+# Lint with flake8
+flake8
+Frontend
 
-**Use your preferred IDE**
+bash
+# Lint
+npm run lint
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+# Type check
+npm run type-check
+📚 API Documentation
+Authentication
+POST /api/auth/register/ - Register new user
+POST /api/auth/login/ - Login
+GET /api/auth/me/ - Get current user
+PUT /api/auth/me/ - Update current user
+POST /api/auth/token/refresh/ - Refresh JWT token
+Profiles
+GET /api/profiles/<id>/ - Get user profile
+GET /api/profiles/me/ - Get current user's profile
+PUT /api/profiles/me/ - Update current user's profile
+Startups
+GET /api/startups/ - List all startups (paginated)
+POST /api/startups/ - Create startup (founder only)
+GET /api/startups/my/ - Get my startups
+GET /api/startups/<id>/ - Get startup details
+PUT /api/startups/<id>/ - Update startup (owner only)
+DELETE /api/startups/<id>/ - Delete startup (owner only)
+Interests
+POST /api/startups/<id>/interest/ - Express interest (talent)
+DELETE /api/startups/<id>/interest/ - Withdraw interest
+GET /api/startups/<id>/interests/ - View interests (founder/owner)
+GET /api/my/interests/ - My interests (talent)
+🤝 Contributing
+Fork the repository
+Create feature branch (git checkout -b feature/amazing)
+Commit changes (git commit -m 'Add amazing feature')
+Push to branch (git push origin feature/amazing)
+Open Pull Request
+📄 License
+This project is licensed under the MIT License.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+🐛 Known Issues
+None currently. Report issues at: https://github.com/jagan25-mj/startup-connect-hub/issues
 
-Follow these steps:
+🎯 Roadmap
+ Phase 5: Advanced matching algorithms
+ Phase 6: Messaging system
+ Phase 7: Investment tracking
+ Phase 8: Analytics dashboard
+💬 Support
+For questions or support:
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+Open an issue on GitHub
+Contact: [Your Email]
+Made with ❤️ by the Startup Connect Hub team
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

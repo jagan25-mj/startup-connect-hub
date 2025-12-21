@@ -5,11 +5,10 @@ from .models import User, Profile
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    """Create a profile for the user when the user is created."""
+    """
+    Create a profile for the user when the user is created.
+    Only runs on user creation (not on every save).
+    """
     if created:
         Profile.objects.create(user=instance)
-
-
-# ✅ FIXED: Removed save_user_profile signal
-# Profiles should be saved explicitly through the API when updated
-# The previous implementation was causing unnecessary saves on every user update
+        print(f"✅ Profile created for user: {instance.email}")

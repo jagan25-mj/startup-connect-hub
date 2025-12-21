@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Rocket, Users, Briefcase, TrendingUp, Plus, ArrowRight } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
+import type { User, Startup, Interest, PaginatedResponse } from '@/types/api';
 
 interface Stats {
   totalStartups: number;
@@ -13,17 +15,8 @@ interface Stats {
   myStartups: number;
 }
 
-interface Interest {
-  id: string;
-  startup_id: string;
-  startup_name: string;
-  created_at: string;
-}
-
-const API_BASE_URL = 'http://localhost:8000/api';
-
 export default function Dashboard() {
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalStartups: 0,
     totalFounders: 0,
@@ -35,51 +28,29 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!tokens?.access) return;
-
       try {
+        setLoading(true);
+
         // Fetch total startups
-        const startupsResponse = await fetch(`${API_BASE_URL}/startups/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-        const startupsData = await startupsResponse.json();
-        const totalStartups = startupsData.count || startupsData.length || 0;
+        const startupsData = await apiClient.get<PaginatedResponse<Startup>>('/startups/');
+        const totalStartups = startupsData.count || 0;
 
         // Fetch users count by role
-        const usersResponse = await fetch(`${API_BASE_URL}/auth/users/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-        const usersData: { role: string }[] = await usersResponse.json();
+        const usersData = await apiClient.get<User[]>('/auth/users/');
         const totalFounders = usersData.filter((u) => u.role === 'founder').length;
         const totalTalent = usersData.filter((u) => u.role === 'talent').length;
 
         // Fetch my startups (if founder)
         let myStartups = 0;
         if (user?.role === 'founder') {
-          const myStartupsResponse = await fetch(`${API_BASE_URL}/startups/my/`, {
-            headers: {
-              'Authorization': `Bearer ${tokens.access}`,
-            },
-          });
-          const myStartupsData = await myStartupsResponse.json();
-          myStartups = myStartupsData.length || 0;
+          const myStartupsData = await apiClient.get<Startup[]>('/startups/my/');
+          myStartups = myStartupsData.length;
         }
 
         // Fetch my interests (if talent)
         let myInterests: Interest[] = [];
         if (user?.role === 'talent') {
-          const interestsResponse = await fetch(`${API_BASE_URL}/my/interests/`, {
-            headers: {
-              'Authorization': `Bearer ${tokens.access}`,
-            },
-          });
-          if (interestsResponse.ok) {
-            myInterests = await interestsResponse.json();
-          }
+          myInterests = await apiClient.get<Interest[]>('/my/interests/');
         }
 
         setStats({
@@ -89,17 +60,17 @@ export default function Dashboard() {
           myStartups,
         });
         setInterests(myInterests);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching stats:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    if (user && tokens) {
+    if (user) {
       fetchStats();
     }
-  }, [user, tokens]);
+  }, [user]);
 
   const statCards = [
     { 
