@@ -172,14 +172,11 @@ CORS_ALLOWED_ORIGINS = [
     "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
 ]
 
-CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    "https://startup-connect-hub.vercel.app",
+    "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
+]
 
-# CSRF Settings for Render
-CSRF_TRUSTED_ORIGINS = config(
-    'CSRF_TRUSTED_ORIGINS',
-    default='https://*.onrender.com',
-    cast=lambda v: [o.strip() for o in v.split(',')]
-)
 
 CORS_ALLOW_METHODS = [
     'DELETE',
