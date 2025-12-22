@@ -1,21 +1,31 @@
 """
 Django settings for startup_platform project.
+Production-ready configuration for Render deployment.
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
-from decouple import config
+
+# Try to import decouple, fallback to os.environ
+try:
+    from decouple import config
+except ImportError:
+    config = lambda key, default=None, cast=None: os.environ.get(key, default)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-REPLACE-ME-IN-PRODUCTION')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default='False', cast=lambda v: v.lower() in ('true', '1', 'yes'))
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
-
+# RENDER DEPLOYMENT: Accept .onrender.com domains
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,.onrender.com',
+    cast=lambda v: [h.strip() for h in v.split(',')]
+)
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -154,19 +164,21 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
-# CORS Settings - Allow frontend to communicate with backend
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:8080',
-    'http://localhost:5173',  # ✅ FIXED: Added Vite default port
-    'http://localhost:3000',
-    'http://127.0.0.1:8080',
-    'http://127.0.0.1:5173',  # ✅ FIXED: Added localhost variant
-    'http://127.0.0.1:3000',
-]
+# CORS Settings - Production Ready
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS', 
+    default='http://localhost:5173,http://localhost:3000',
+    cast=lambda v: [o.strip() for o in v.split(',')]
+)
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True
 
+# CSRF Settings for Render
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://*.onrender.com',
+    cast=lambda v: [o.strip() for o in v.split(',')]
+)
 
 CORS_ALLOW_METHODS = [
     'DELETE',
@@ -188,4 +200,18 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Remove the line: CORS_ALLOW_ALL_ORIGINS = True  # SECURITY RISK
 ALLOWED_HOSTS = ["*"]  # safe for now, restrict later
+# Static files for production (Render)
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
