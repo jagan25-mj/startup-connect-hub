@@ -165,11 +165,12 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings - Production Ready
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS', 
-    default='http://localhost:5173,http://localhost:3000',
-    cast=lambda v: [o.strip() for o in v.split(',')]
-)
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOWED_ORIGINS = [
+    "https://startup-connect-hub.vercel.app",
+    "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
+]
 
 CORS_ALLOW_CREDENTIALS = True
 
