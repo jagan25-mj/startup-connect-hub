@@ -188,3 +188,4 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+ALLOWED_HOSTS = ["*"]  # safe for now, restrict later
