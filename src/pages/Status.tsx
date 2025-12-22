@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, XCircle, AlertCircle, Activity, Database, Shield, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Activity, Database, Shield } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
 
 interface HealthCheck {
   name: string;
@@ -11,10 +12,8 @@ interface HealthCheck {
   icon: React.ElementType;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api';
-
 export default function Status() {
-  const { tokens } = useAuth();
+  useAuth(); // preserved hook usage
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -26,11 +25,11 @@ export default function Status() {
     // API health check
     const apiStart = Date.now();
     try {
-      const response = await fetch(`${API_BASE_URL}/health/`);
+      await apiClient.get('/health/');
       const apiLatency = Date.now() - apiStart;
       results.push({
         name: 'API Server',
-        status: response.ok ? 'operational' : 'degraded',
+        status: 'operational',
         latency: apiLatency,
         icon: Activity,
       });
@@ -42,48 +41,31 @@ export default function Status() {
       });
     }
 
-    // Database connectivity check (via API)
-    if (tokens?.access) {
-      const dbStart = Date.now();
-      try {
-        const response = await fetch(`${API_BASE_URL}/auth/me/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-        const dbLatency = Date.now() - dbStart;
-        results.push({
-          name: 'Database',
-          status: response.ok ? 'operational' : 'degraded',
-          latency: dbLatency,
-          icon: Database,
-        });
-      } catch {
-        results.push({
-          name: 'Database',
-          status: 'down',
-          icon: Database,
-        });
-      }
-
-      // Auth service check
-      results.push({
-        name: 'Authentication',
-        status: 'operational',
-        icon: Shield,
-      });
-    } else {
+    // Database connectivity check
+    const dbStart = Date.now();
+    try {
+      await apiClient.get('/auth/me/');
+      const dbLatency = Date.now() - dbStart;
       results.push({
         name: 'Database',
-        status: 'degraded',
+        status: 'operational',
+        latency: dbLatency,
         icon: Database,
       });
+    } catch {
       results.push({
-        name: 'Authentication',
-        status: 'degraded',
-        icon: Shield,
+        name: 'Database',
+        status: 'down',
+        icon: Database,
       });
     }
+
+    // Auth service check
+    results.push({
+      name: 'Authentication',
+      status: 'operational',
+      icon: Shield,
+    });
 
     // Overall platform status
     const allOperational = results.every((r) => r.status === 'operational');
@@ -97,11 +79,11 @@ export default function Status() {
     setChecks(results);
     setLastChecked(new Date());
     setLoading(false);
-  }, [tokens]);
+  }, []);
 
   useEffect(() => {
     runHealthChecks();
-    const interval = setInterval(runHealthChecks, 30000); // Check every 30 seconds
+    const interval = setInterval(runHealthChecks, 30000);
     return () => clearInterval(interval);
   }, [runHealthChecks]);
 
@@ -138,33 +120,42 @@ export default function Status() {
     }
   };
 
-  const overallStatus = checks.find((c) => c.name === 'Platform')?.status || 'operational';
+  const overallStatus =
+    checks.find((c) => c.name === 'Platform')?.status || 'operational';
 
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
         <div className="text-center">
-          <h1 className="text-3xl font-display font-bold text-foreground">System Status</h1>
-          <p className="text-muted-foreground mt-1">Real-time platform health monitoring</p>
+          <h1 className="text-3xl font-display font-bold text-foreground">
+            System Status
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Real-time platform health monitoring
+          </p>
         </div>
 
         {/* Overall Status Banner */}
-        <Card className={`shadow-card border-2 ${
-          overallStatus === 'operational' 
-            ? 'border-success/20' 
-            : overallStatus === 'degraded' 
-              ? 'border-warning/20' 
+        <Card
+          className={`shadow-card border-2 ${
+            overallStatus === 'operational'
+              ? 'border-success/20'
+              : overallStatus === 'degraded'
+              ? 'border-warning/20'
               : 'border-destructive/20'
-        }`}>
+          }`}
+        >
           <CardContent className="py-8">
             <div className="flex flex-col items-center">
-              <div className={`p-4 rounded-full mb-4 ${
-                overallStatus === 'operational'
-                  ? 'bg-success/10'
-                  : overallStatus === 'degraded'
+              <div
+                className={`p-4 rounded-full mb-4 ${
+                  overallStatus === 'operational'
+                    ? 'bg-success/10'
+                    : overallStatus === 'degraded'
                     ? 'bg-warning/10'
                     : 'bg-destructive/10'
-              }`}>
+                }`}
+              >
                 {overallStatus === 'operational' ? (
                   <CheckCircle className="h-12 w-12 text-success" />
                 ) : overallStatus === 'degraded' ? (
@@ -177,8 +168,8 @@ export default function Status() {
                 {overallStatus === 'operational'
                   ? 'All Systems Operational'
                   : overallStatus === 'degraded'
-                    ? 'Partial System Degradation'
-                    : 'System Outage'}
+                  ? 'Partial System Degradation'
+                  : 'System Outage'}
               </h2>
               {lastChecked && (
                 <p className="text-sm text-muted-foreground mt-2">
@@ -199,7 +190,10 @@ export default function Status() {
             {loading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 animate-pulse">
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-4 rounded-lg bg-muted/50 animate-pulse"
+                  >
                     <div className="h-5 w-32 bg-muted rounded" />
                     <div className="h-5 w-24 bg-muted rounded" />
                   </div>
@@ -226,7 +220,11 @@ export default function Status() {
                   </div>
                   <div className="flex items-center gap-2">
                     {getStatusIcon(check.status)}
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(check.status)}`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                        check.status
+                      )}`}
+                    >
                       {getStatusLabel(check.status)}
                     </span>
                   </div>
@@ -240,7 +238,8 @@ export default function Status() {
         <Card className="shadow-card bg-accent/30">
           <CardContent className="py-4">
             <p className="text-sm text-center text-muted-foreground">
-              Status updates automatically every 30 seconds. For urgent issues, please contact support.
+              Status updates automatically every 30 seconds. For urgent issues,
+              please contact support.
             </p>
           </CardContent>
         </Card>

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ArrowLeft, Rocket } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
 
 interface Startup {
   id: string;
@@ -23,8 +24,6 @@ interface Startup {
   created_at: string;
   updated_at: string;
 }
-
-const API_BASE_URL = 'http://localhost:8000/api';
 
 const INDUSTRIES = [
   'Technology',
@@ -49,8 +48,9 @@ const STAGES = [
 
 export default function EditStartup() {
   const { id } = useParams<{ id: string }>();
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [startup, setStartup] = useState<Startup | null>(null);
@@ -64,27 +64,11 @@ export default function EditStartup() {
 
   useEffect(() => {
     const fetchStartup = async () => {
-      if (!tokens?.access || !id) return;
+      if (!id) return;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
+        const data = await apiClient.get<Startup>(`/startups/${id}/`);
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error('Startup not found');
-            navigate('/startups');
-            return;
-          }
-          throw new Error('Failed to fetch startup');
-        }
-
-        const data = await response.json();
-
-        // Check if user is the owner
         if (data.owner_id !== user?.id) {
           toast.error('You can only edit your own startups');
           navigate('/startups');
@@ -99,7 +83,7 @@ export default function EditStartup() {
           stage: data.stage || '',
           website: data.website || '',
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching startup:', error);
         toast.error('Failed to load startup');
       } finally {
@@ -108,11 +92,11 @@ export default function EditStartup() {
     };
 
     fetchStartup();
-  }, [tokens, id, user?.id, navigate]);
+  }, [id, user?.id, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tokens?.access || !id) return;
+    if (!id) return;
 
     setSaving(true);
 
@@ -125,25 +109,12 @@ export default function EditStartup() {
         website: formData.website || null,
       };
 
-      const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(startupData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update startup');
-      }
-
+      await apiClient.put(`/startups/${id}/`, startupData);
       toast.success('Startup updated successfully!');
       navigate(`/startups/${id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating startup:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to update startup');
+      toast.error(error.message || 'Failed to update startup');
     } finally {
       setSaving(false);
     }
@@ -168,8 +139,10 @@ export default function EditStartup() {
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
           <Rocket className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">Startup not found</h3>
-          <p className="text-muted-foreground mb-4">The startup you're trying to edit doesn't exist.</p>
+          <h3 className="text-lg font-semibold mb-2">Startup not found</h3>
+          <p className="text-muted-foreground mb-4">
+            The startup you're trying to edit doesn't exist.
+          </p>
           <Button onClick={() => navigate('/startups')}>Back to Startups</Button>
         </div>
       </DashboardLayout>
@@ -188,7 +161,7 @@ export default function EditStartup() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">
+            <h1 className="text-3xl font-display font-bold">
               Edit Startup
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -197,9 +170,9 @@ export default function EditStartup() {
           </div>
         </div>
 
-        <Card className="shadow-card">
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2">
               <Rocket className="h-5 w-5" />
               Startup Details
             </CardTitle>
@@ -207,63 +180,68 @@ export default function EditStartup() {
               Modify your startup information
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="name">Startup Name *</Label>
+              <div>
+                <Label>Startup Name *</Label>
                 <Input
-                  id="name"
                   value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  placeholder="Enter your startup name"
+                  onChange={(e) =>
+                    handleInputChange('name', e.target.value)
+                  }
                   required
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+              <div>
+                <Label>Description</Label>
                 <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  placeholder="Describe your startup..."
                   rows={4}
+                  value={formData.description}
+                  onChange={(e) =>
+                    handleInputChange('description', e.target.value)
+                  }
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="industry">Industry</Label>
+                <div>
+                  <Label>Industry</Label>
                   <Select
                     value={formData.industry}
-                    onValueChange={(value) => handleInputChange('industry', value)}
+                    onValueChange={(v) =>
+                      handleInputChange('industry', v)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select industry" />
                     </SelectTrigger>
                     <SelectContent>
-                      {INDUSTRIES.map((industry) => (
-                        <SelectItem key={industry} value={industry}>
-                          {industry}
+                      {INDUSTRIES.map(i => (
+                        <SelectItem key={i} value={i}>
+                          {i}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="stage">Stage</Label>
+                <div>
+                  <Label>Stage</Label>
                   <Select
                     value={formData.stage}
-                    onValueChange={(value) => handleInputChange('stage', value)}
+                    onValueChange={(v) =>
+                      handleInputChange('stage', v)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      {STAGES.map((stage) => (
-                        <SelectItem key={stage} value={stage}>
-                          {stage}
+                      {STAGES.map(s => (
+                        <SelectItem key={s} value={s}>
+                          {s}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -271,30 +249,30 @@ export default function EditStartup() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
+              <div>
+                <Label>Website</Label>
                 <Input
-                  id="website"
                   type="url"
                   value={formData.website}
-                  onChange={(e) => handleInputChange('website', e.target.value)}
-                  placeholder="https://yourstartup.com"
+                  onChange={(e) =>
+                    handleInputChange('website', e.target.value)
+                  }
                 />
               </div>
 
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-4">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate(`/startups/${id}`)}
                   className="flex-1"
+                  onClick={() => navigate(`/startups/${id}`)}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  disabled={saving || !formData.name.trim()}
                   className="flex-1"
+                  disabled={saving || !formData.name.trim()}
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </Button>

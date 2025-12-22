@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { toast } from 'sonner';
 import { Plus, Rocket, Globe, Building, Trash2, Edit } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { apiClient } from '@/lib/apiClient';
 
 interface Startup {
   id: string;
@@ -25,7 +26,9 @@ interface Startup {
   updated_at: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api';
+interface PaginatedResponse<T> {
+  results: T[];
+}
 
 const INDUSTRIES = [
   'Technology',
@@ -49,7 +52,7 @@ const STAGES = [
 ];
 
 export default function Startups() {
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const [startups, setStartups] = useState<Startup[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -66,37 +69,27 @@ export default function Startups() {
   const isFounder = user?.role === 'founder';
 
   const fetchStartups = useCallback(async () => {
-    if (!tokens?.access) return;
-
     try {
-      const endpoint = isFounder ? `${API_BASE_URL}/startups/my/` : `${API_BASE_URL}/startups/`;
-      const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch startups');
-
-      const data = await response.json();
+      const endpoint = isFounder ? '/startups/my/' : '/startups/';
+      const data = await apiClient.get<Startup[] | PaginatedResponse<Startup>>(endpoint);
       setStartups(Array.isArray(data) ? data : data.results || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching startups:', error);
       toast.error('Failed to load startups');
     } finally {
       setLoading(false);
     }
-  }, [tokens, isFounder]);
+  }, [isFounder]);
 
   useEffect(() => {
-    if (user && tokens) {
+    if (user) {
       fetchStartups();
     }
-  }, [user, tokens, fetchStartups]);
+  }, [user, fetchStartups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !tokens) return;
+    if (!user) return;
     setFormLoading(true);
 
     try {
@@ -109,39 +102,19 @@ export default function Startups() {
       };
 
       if (editingStartup) {
-        const response = await fetch(`${API_BASE_URL}/startups/${editingStartup.id}/`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(startupData),
-        });
-
-        if (!response.ok) throw new Error('Failed to update startup');
-
+        await apiClient.put(`/startups/${editingStartup.id}/`, startupData);
         toast.success('Startup updated successfully!');
       } else {
-        const response = await fetch(`${API_BASE_URL}/startups/`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(startupData),
-        });
-
-        if (!response.ok) throw new Error('Failed to create startup');
-
+        await apiClient.post('/startups/', startupData);
         toast.success('Startup created successfully!');
       }
 
       setDialogOpen(false);
       resetForm();
       fetchStartups();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving startup:', error);
-      toast.error('Failed to save startup');
+      toast.error(error.message || 'Failed to save startup');
     } finally {
       setFormLoading(false);
     }
@@ -149,23 +122,14 @@ export default function Startups() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this startup?')) return;
-    if (!tokens) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to delete startup');
-
+      await apiClient.delete(`/startups/${id}/`);
       toast.success('Startup deleted');
       fetchStartups();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting startup:', error);
-      toast.error('Failed to delete startup');
+      toast.error(error.message || 'Failed to delete startup');
     }
   };
 
@@ -192,7 +156,7 @@ export default function Startups() {
   };
 
   return (
-    <DashboardLayout>
+   <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>

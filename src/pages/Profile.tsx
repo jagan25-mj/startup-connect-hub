@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { User, Mail, Github, Linkedin, Globe, Edit, Building, Briefcase, Calendar } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
 
 interface Profile {
   id: string;
@@ -25,11 +26,9 @@ interface Profile {
   updated_at: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api';
-
 export default function Profile() {
   const { id } = useParams<{ id: string }>();
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,35 +36,25 @@ export default function Profile() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!tokens?.access || !id) return;
+      if (!id) return;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/profiles/${id}/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error('Profile not found');
-            return;
-          }
-          throw new Error('Failed to fetch profile');
-        }
-
-        const data = await response.json();
+        const data = await apiClient.get<Profile>(`/profiles/${id}/`);
         setProfile(data);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching profile:', error);
-        toast.error('Failed to load profile');
+        if (error.status === 404) {
+          toast.error('Profile not found');
+        } else {
+          toast.error('Failed to load profile');
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchProfile();
-  }, [tokens, id]);
+  }, [id]);
 
   if (loading) {
     return (
@@ -82,8 +71,10 @@ export default function Profile() {
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
           <User className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">Profile not found</h3>
-          <p className="text-muted-foreground mb-4">The profile you're looking for doesn't exist.</p>
+          <h3 className="text-lg font-semibold mb-2">Profile not found</h3>
+          <p className="text-muted-foreground mb-4">
+            The profile you're looking for doesn't exist.
+          </p>
           <Link to="/dashboard">
             <Button>Back to Dashboard</Button>
           </Link>
@@ -127,47 +118,41 @@ export default function Profile() {
         <div className="grid gap-6 md:grid-cols-3">
           <div className="md:col-span-2 space-y-6">
             {profile.bio && (
-              <Card className="shadow-card">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display">About</CardTitle>
+                  <CardTitle>About</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-foreground leading-relaxed">
-                    {profile.bio}
-                  </p>
+                  <p className="leading-relaxed">{profile.bio}</p>
                 </CardContent>
               </Card>
             )}
 
             {profile.experience && (
-              <Card className="shadow-card">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
                     <Briefcase className="h-5 w-5" />
                     Experience
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-foreground leading-relaxed">
-                    {profile.experience}
-                  </p>
+                  <p className="leading-relaxed">{profile.experience}</p>
                 </CardContent>
               </Card>
             )}
 
-            {profile.skills && profile.skills.length > 0 && (
-              <Card className="shadow-card">
+            {profile.skills.length > 0 && (
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display">Skills</CardTitle>
+                  <CardTitle>Skills</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {profile.skills.map((skill, index) => (
-                      <Badge key={index} variant="secondary">
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
+                <CardContent className="flex flex-wrap gap-2">
+                  {profile.skills.map((skill, index) => (
+                    <Badge key={index} variant="secondary">
+                      {skill}
+                    </Badge>
+                  ))}
                 </CardContent>
               </Card>
             )}
@@ -175,9 +160,9 @@ export default function Profile() {
 
           <div className="space-y-6">
             {(profile.github_url || profile.linkedin_url || profile.website_url) && (
-              <Card className="shadow-card">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display">Links</CardTitle>
+                  <CardTitle>Links</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {profile.github_url && (
@@ -217,9 +202,9 @@ export default function Profile() {
               </Card>
             )}
 
-            <Card className="shadow-card">
+            <Card>
               <CardHeader>
-                <CardTitle className="font-display">Profile Details</CardTitle>
+                <CardTitle>Profile Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -227,7 +212,7 @@ export default function Profile() {
                     <Calendar className="h-4 w-4" />
                     Member since
                   </p>
-                  <p className="text-sm text-foreground mt-1">
+                  <p className="text-sm mt-1">
                     {new Date(profile.created_at).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
@@ -237,8 +222,10 @@ export default function Profile() {
                 </div>
 
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Last updated</p>
-                  <p className="text-sm text-foreground mt-1">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Last updated
+                  </p>
+                  <p className="text-sm mt-1">
                     {new Date(profile.updated_at).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',

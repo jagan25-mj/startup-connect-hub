@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { User, Mail, Save, X, Plus, ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { apiClient } from '@/lib/apiClient';
 
 interface Profile {
   id: string;
@@ -27,11 +28,10 @@ interface Profile {
   updated_at: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api';
-
 export default function EditProfile() {
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -47,19 +47,11 @@ export default function EditProfile() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!tokens?.access || !user?.id) return;
+      if (!user?.id) return;
 
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/profiles/me/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-
-        if (!response.ok) throw new Error('Failed to fetch profile');
-
-        const data = await response.json();
+        const data = await apiClient.get<Profile>('/profiles/me/');
         setProfile(data);
         setFormData({
           bio: data.bio || '',
@@ -78,33 +70,17 @@ export default function EditProfile() {
     };
 
     fetchProfile();
-  }, [tokens, user?.id]);
+  }, [user?.id]);
 
   const handleSave = async () => {
-    if (!tokens?.access) return;
-
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/profiles/me/`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update profile');
-      }
-
+      await apiClient.put('/profiles/me/', formData);
       toast.success('Profile updated successfully!');
       navigate(`/profile/${user?.id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      const message = error instanceof Error ? error.message : 'Failed to update profile';
-      toast.error(message);
+      toast.error(error.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -147,8 +123,10 @@ export default function EditProfile() {
             </Button>
           </Link>
           <div className="flex-1">
-            <h1 className="text-3xl font-display font-bold text-foreground">Edit Profile</h1>
-            <p className="text-muted-foreground mt-1">Update your personal information</p>
+            <h1 className="text-3xl font-display font-bold">Edit Profile</h1>
+            <p className="text-muted-foreground mt-1">
+              Update your personal information
+            </p>
           </div>
           <Button onClick={handleSave} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
@@ -157,21 +135,21 @@ export default function EditProfile() {
         </div>
 
         {/* Profile Header */}
-        <Card className="shadow-card">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-6">
-              <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-3xl font-bold shadow-soft">
+              <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-3xl font-bold">
                 {user?.full_name?.charAt(0) || 'U'}
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-display font-bold text-foreground">
+                <h2 className="text-2xl font-display font-bold">
                   {user?.full_name || 'No name set'}
                 </h2>
                 <p className="text-muted-foreground flex items-center gap-2 mt-1">
                   <Mail className="h-4 w-4" />
                   {user?.email}
                 </p>
-                <span className="inline-block mt-2 px-3 py-1 bg-accent text-accent-foreground text-sm font-medium rounded-full capitalize">
+                <span className="inline-block mt-2 px-3 py-1 bg-accent text-accent-foreground text-sm rounded-full capitalize">
                   {user?.role}
                 </span>
               </div>
@@ -179,10 +157,10 @@ export default function EditProfile() {
           </CardContent>
         </Card>
 
-        {/* Bio Section */}
-        <Card className="shadow-card">
+        {/* Bio */}
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
               About
             </CardTitle>
@@ -192,32 +170,32 @@ export default function EditProfile() {
             <Textarea
               value={formData.bio}
               onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-              placeholder="Write a brief bio about yourself..."
               rows={4}
             />
           </CardContent>
         </Card>
 
-        {/* Experience Section */}
-        <Card className="shadow-card">
+        {/* Experience */}
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display">Experience</CardTitle>
+            <CardTitle>Experience</CardTitle>
             <CardDescription>Share your professional background</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
               value={formData.experience}
-              onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-              placeholder="Describe your experience..."
+              onChange={(e) =>
+                setFormData({ ...formData, experience: e.target.value })
+              }
               rows={4}
             />
           </CardContent>
         </Card>
 
-        {/* Skills Section */}
-        <Card className="shadow-card">
+        {/* Skills */}
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display">Skills</CardTitle>
+            <CardTitle>Skills</CardTitle>
             <CardDescription>Highlight your expertise</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -226,7 +204,9 @@ export default function EditProfile() {
                 value={newSkill}
                 onChange={(e) => setNewSkill(e.target.value)}
                 placeholder="Add a skill..."
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
+                onKeyPress={(e) =>
+                  e.key === 'Enter' && (e.preventDefault(), addSkill())
+                }
               />
               <Button type="button" onClick={addSkill} size="icon">
                 <Plus className="h-4 w-4" />
@@ -248,41 +228,41 @@ export default function EditProfile() {
           </CardContent>
         </Card>
 
-        {/* Links Section */}
-        <Card className="shadow-card">
+        {/* Links */}
+        <Card>
           <CardHeader>
-            <CardTitle className="font-display">Links</CardTitle>
+            <CardTitle>Links</CardTitle>
             <CardDescription>Add your professional profiles</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="github">GitHub URL</Label>
+            <div>
+              <Label>GitHub URL</Label>
               <Input
-                id="github"
                 type="url"
                 value={formData.github_url}
-                onChange={(e) => setFormData({ ...formData, github_url: e.target.value })}
-                placeholder="https://github.com/username"
+                onChange={(e) =>
+                  setFormData({ ...formData, github_url: e.target.value })
+                }
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="linkedin">LinkedIn URL</Label>
+            <div>
+              <Label>LinkedIn URL</Label>
               <Input
-                id="linkedin"
                 type="url"
                 value={formData.linkedin_url}
-                onChange={(e) => setFormData({ ...formData, linkedin_url: e.target.value })}
-                placeholder="https://linkedin.com/in/username"
+                onChange={(e) =>
+                  setFormData({ ...formData, linkedin_url: e.target.value })
+                }
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="website">Website URL</Label>
+            <div>
+              <Label>Website URL</Label>
               <Input
-                id="website"
                 type="url"
                 value={formData.website_url}
-                onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
-                placeholder="https://yourwebsite.com"
+                onChange={(e) =>
+                  setFormData({ ...formData, website_url: e.target.value })
+                }
               />
             </div>
           </CardContent>

@@ -10,8 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ArrowLeft, Rocket } from 'lucide-react';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { apiClient } from '@/lib/apiClient';
 
 const INDUSTRIES = [
   'Technology',
@@ -35,7 +34,7 @@ const STAGES = [
 ];
 
 export default function CreateStartup() {
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -54,8 +53,6 @@ export default function CreateStartup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tokens?.access) return;
-
     setLoading(true);
 
     try {
@@ -67,25 +64,12 @@ export default function CreateStartup() {
         website: formData.website || null,
       };
 
-      const response = await fetch(`${API_BASE_URL}/startups/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(startupData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create startup');
-      }
-
+      await apiClient.post('/startups/', startupData);
       toast.success('Startup created successfully!');
       navigate('/startups');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating startup:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create startup');
+      toast.error(error.message || 'Failed to create startup');
     } finally {
       setLoading(false);
     }

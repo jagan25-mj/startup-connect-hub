@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { ArrowLeft, Rocket, Globe, Building, Edit, Trash2, ExternalLink, Calendar } from 'lucide-react';
+import { apiClient } from '@/lib/apiClient';
 
 interface Startup {
   id: string;
@@ -33,12 +34,11 @@ interface Interest {
   created_at: string;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api';
-
 export default function StartupDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user, tokens } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+
   const [startup, setStartup] = useState<Startup | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -51,71 +51,47 @@ export default function StartupDetail() {
 
   useEffect(() => {
     const fetchStartup = async () => {
-      if (!tokens?.access || !id) return;
+      if (!id) return;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
-          headers: {
-            'Authorization': `Bearer ${tokens.access}`,
-          },
-        });
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error('Startup not found');
-            navigate('/startups');
-            return;
-          }
-          throw new Error('Failed to fetch startup');
-        }
-
-        const data = await response.json();
+        const data = await apiClient.get<Startup>(`/startups/${id}/`);
         setStartup(data);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching startup:', error);
-        toast.error('Failed to load startup details');
+        if (error.status === 404) {
+          toast.error('Startup not found');
+          navigate('/startups');
+        } else {
+          toast.error('Failed to load startup details');
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchStartup();
-  }, [tokens, id, navigate]);
+  }, [id, navigate]);
 
   useEffect(() => {
     const checkInterestAndFetchInterests = async () => {
-      if (!tokens?.access || !id || !startup) return;
+      if (!id || !startup) return;
 
-      // Check if user has expressed interest (for talents)
+      // Check if user has expressed interest
       if (user?.role === 'talent') {
         try {
-          const response = await fetch(`${API_BASE_URL}/my/interests/`, {
-            headers: {
-              'Authorization': `Bearer ${tokens.access}`,
-            },
-          });
-          if (response.ok) {
-            const data: Interest[] = await response.json();
-            const hasInterest = data.some((interest) => interest.startup_id === id);
-            setInterested(hasInterest);
-          }
+          const data = await apiClient.get<Interest[]>('/my/interests/');
+          const hasInterest = data.some((interest) => interest.startup_id === id);
+          setInterested(hasInterest);
         } catch (error) {
           console.error('Error checking interest:', error);
         }
       }
 
-      // Fetch interests if founder and owner
+      // Fetch interests for owner
       if (isFounder && isOwner) {
         try {
-          const response = await fetch(`${API_BASE_URL}/startups/${id}/interests/`, {
-            headers: {
-              'Authorization': `Bearer ${tokens.access}`,
-            },
-          });
-          if (response.ok) {
-            const data = await response.json();
-            setInterests(data);
-          }
+          const data = await apiClient.get<Interest[]>(`/startups/${id}/interests/`);
+          setInterests(data);
         } catch (error) {
           console.error('Error fetching interests:', error);
         }
@@ -123,24 +99,15 @@ export default function StartupDetail() {
     };
 
     checkInterestAndFetchInterests();
-  }, [tokens, id, startup, user, isFounder, isOwner]);
+  }, [id, startup, user, isFounder, isOwner]);
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this startup? This action cannot be undone.')) return;
-    if (!tokens?.access || !id) return;
+    if (!confirm('Are you sure you want to delete this startup?')) return;
+    if (!id) return;
 
     setDeleting(true);
-
     try {
-      const response = await fetch(`${API_BASE_URL}/startups/${id}/`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-        },
-      });
-
-      if (!response.ok) throw new Error('Failed to delete startup');
-
+      await apiClient.delete(`/startups/${id}/`);
       toast.success('Startup deleted successfully');
       navigate('/startups');
     } catch (error) {
@@ -152,37 +119,30 @@ export default function StartupDetail() {
   };
 
   const handleInterest = async () => {
-    if (!tokens?.access || !id) return;
+    if (!id) return;
 
     setInterestLoading(true);
-
     try {
-      const method = interested ? 'DELETE' : 'POST';
-      const response = await fetch(`${API_BASE_URL}/startups/${id}/interest/`, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${tokens.access}`,
-        },
-      });
+      const method = interested ? 'delete' : 'post';
+      const data = await apiClient[method]<{ message: string }>(
+        `/startups/${id}/interest/`
+      );
 
-      if (!response.ok) {
-        const errorData: { message?: string } = await response.json();
-        throw new Error(errorData.message || 'Failed to update interest');
-      }
-
-      const data = await response.json();
       toast.success(data.message);
       setInterested(!interested);
-      
-      // Update interest count
-      setStartup(prev => prev ? {
-        ...prev,
-        interest_count: interested ? prev.interest_count - 1 : prev.interest_count + 1
-      } : null);
-    } catch (error) {
+      setStartup((prev) =>
+        prev
+          ? {
+              ...prev,
+              interest_count: interested
+                ? prev.interest_count - 1
+                : prev.interest_count + 1,
+            }
+          : null
+      );
+    } catch (error: any) {
       console.error('Error updating interest:', error);
-      const message = error instanceof Error ? error.message : 'Failed to update interest';
-      toast.error(message);
+      toast.error(error.message || 'Failed to update interest');
     } finally {
       setInterestLoading(false);
     }
@@ -203,8 +163,10 @@ export default function StartupDetail() {
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
           <Rocket className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">Startup not found</h3>
-          <p className="text-muted-foreground mb-4">The startup you're looking for doesn't exist.</p>
+          <h3 className="text-lg font-semibold mb-2">Startup not found</h3>
+          <p className="text-muted-foreground mb-4">
+            The startup you're looking for doesn't exist.
+          </p>
           <Link to="/startups">
             <Button>Back to Startups</Button>
           </Link>
@@ -423,5 +385,6 @@ export default function StartupDetail() {
         </div>
       </div>
     </DashboardLayout>
+
   );
 }

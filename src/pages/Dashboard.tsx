@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Rocket, Users, Briefcase, TrendingUp, Plus, ArrowRight } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { User, Startup, Interest, PaginatedResponse } from '@/types/api';
 
 interface Stats {
@@ -31,23 +32,25 @@ export default function Dashboard() {
       try {
         setLoading(true);
 
-        // Fetch total startups
-        const startupsData = await apiClient.get<PaginatedResponse<Startup>>('/startups/');
+        const startupsData =
+          await apiClient.get<PaginatedResponse<Startup>>('/startups/');
         const totalStartups = startupsData.count || 0;
 
-        // Fetch users count by role
         const usersData = await apiClient.get<User[]>('/auth/users/');
-        const totalFounders = usersData.filter((u) => u.role === 'founder').length;
-        const totalTalent = usersData.filter((u) => u.role === 'talent').length;
+        const totalFounders = usersData.filter(
+          (u) => u.role === 'founder'
+        ).length;
+        const totalTalent = usersData.filter(
+          (u) => u.role === 'talent'
+        ).length;
 
-        // Fetch my startups (if founder)
         let myStartups = 0;
         if (user?.role === 'founder') {
-          const myStartupsData = await apiClient.get<Startup[]>('/startups/my/');
+          const myStartupsData =
+            await apiClient.get<Startup[]>('/startups/my/');
           myStartups = myStartupsData.length;
         }
 
-        // Fetch my interests (if talent)
         let myInterests: Interest[] = [];
         if (user?.role === 'talent') {
           myInterests = await apiClient.get<Interest[]>('/my/interests/');
@@ -60,7 +63,7 @@ export default function Dashboard() {
           myStartups,
         });
         setInterests(myInterests);
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error fetching stats:', error);
       } finally {
         setLoading(false);
@@ -73,41 +76,49 @@ export default function Dashboard() {
   }, [user]);
 
   const statCards = [
-    { 
-      title: 'Total Startups', 
-      value: stats.totalStartups, 
-      icon: Rocket, 
+    {
+      title: 'Total Startups',
+      value: stats.totalStartups,
+      icon: Rocket,
       color: 'text-primary',
-      bgColor: 'bg-accent'
+      bgColor: 'bg-accent',
     },
-    { 
-      title: 'Founders', 
-      value: stats.totalFounders, 
-      icon: Briefcase, 
+    {
+      title: 'Founders',
+      value: stats.totalFounders,
+      icon: Briefcase,
       color: 'text-info',
-      bgColor: 'bg-info/10'
+      bgColor: 'bg-info/10',
     },
-    { 
-      title: 'Talent', 
-      value: stats.totalTalent, 
-      icon: Users, 
+    {
+      title: 'Talent',
+      value: stats.totalTalent,
+      icon: Users,
       color: 'text-success',
-      bgColor: 'bg-success/10'
+      bgColor: 'bg-success/10',
     },
-    ...(user?.role === 'founder' ? [{
-      title: 'My Startups', 
-      value: stats.myStartups, 
-      icon: TrendingUp, 
-      color: 'text-warning',
-      bgColor: 'bg-warning/10'
-    }] : []),
-    ...(user?.role === 'talent' ? [{
-      title: 'My Interests', 
-      value: interests.length, 
-      icon: Rocket, 
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100'
-    }] : []),
+    ...(user?.role === 'founder'
+      ? [
+          {
+            title: 'My Startups',
+            value: stats.myStartups,
+            icon: TrendingUp,
+            color: 'text-warning',
+            bgColor: 'bg-warning/10',
+          },
+        ]
+      : []),
+    ...(user?.role === 'talent'
+      ? [
+          {
+            title: 'My Interests',
+            value: interests.length,
+            icon: Rocket,
+            color: 'text-purple-600',
+            bgColor: 'bg-purple-100',
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -120,7 +131,7 @@ export default function Dashboard() {
               Welcome back, {user?.full_name?.split(' ')[0] || 'there'}!
             </h1>
             <p className="text-muted-foreground mt-1">
-              {user?.role === 'founder' 
+              {user?.role === 'founder'
                 ? 'Manage your startups and find talented co-founders'
                 : 'Discover exciting startup opportunities'}
             </p>
@@ -138,8 +149,8 @@ export default function Dashboard() {
         {/* Stats Grid */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {statCards.map((stat, index) => (
-            <Card 
-              key={stat.title} 
+            <Card
+              key={stat.title}
               className="shadow-card hover:shadow-elevated transition-shadow animate-slide-up"
               style={{ animationDelay: `${index * 100}ms` }}
             >
@@ -152,9 +163,13 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-display font-bold text-foreground">
-                  {loading ? '...' : stat.value}
-                </div>
+                {loading ? (
+                  <Skeleton className="h-10 w-20" />
+                ) : (
+                  <div className="text-3xl font-display font-bold text-foreground">
+                    {stat.value}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -165,9 +180,7 @@ export default function Dashboard() {
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display">Quick Actions</CardTitle>
-              <CardDescription>
-                Get started with common tasks
-              </CardDescription>
+              <CardDescription>Get started with common tasks</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
               <Link to={user?.id ? `/profile/${user.id}` : '/dashboard'}>
@@ -178,7 +191,9 @@ export default function Dashboard() {
               </Link>
               <Link to="/startups">
                 <Button variant="outline" className="w-full justify-between">
-                  {user?.role === 'founder' ? 'Manage startups' : 'Explore startups'}
+                  {user?.role === 'founder'
+                    ? 'Manage startups'
+                    : 'Explore startups'}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -199,60 +214,33 @@ export default function Dashboard() {
                   Startups you've expressed interest in
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {interests.slice(0, 3).map((interest) => (
-                    <div key={interest.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{interest.startup_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Interested {new Date(interest.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Link to={`/startups/${interest.startup_id}`}>
-                        <Button variant="outline" size="sm">
-                          View
-                        </Button>
-                      </Link>
+              <CardContent className="space-y-3">
+                {interests.slice(0, 3).map((interest) => (
+                  <div
+                    key={interest.id}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium text-sm">
+                        {interest.startup_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Interested{' '}
+                        {new Date(
+                          interest.created_at
+                        ).toLocaleDateString()}
+                      </p>
                     </div>
-                  ))}
-                  {interests.length > 3 && (
-                    <Link to="/startups">
-                      <Button variant="outline" className="w-full">
-                        View All Interests
+                    <Link to={`/startups/${interest.startup_id}`}>
+                      <Button variant="outline" size="sm">
+                        View
                       </Button>
                     </Link>
-                  )}
-                </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           )}
-
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="font-display">Your Profile</CardTitle>
-              <CardDescription>
-                A quick overview of your account
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center text-primary-foreground text-xl font-bold">
-                  {user?.full_name?.charAt(0) || 'U'}
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">{user?.full_name || 'User'}</p>
-                  <p className="text-sm text-muted-foreground">{user?.email}</p>
-                  <span className="inline-block mt-1 px-2 py-0.5 bg-accent text-accent-foreground text-xs font-medium rounded-full capitalize">
-                    {user?.role}
-                  </span>
-                </div>
-              </div>
-              {user?.bio && (
-                <p className="text-sm text-muted-foreground">{user.bio}</p>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
     </DashboardLayout>
