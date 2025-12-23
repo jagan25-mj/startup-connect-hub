@@ -19,9 +19,10 @@ class ApiClient {
   private baseUrl: string;
   private isRefreshing = false;
   private refreshSubscribers: Array<(token: string | null) => void> = [];
+  private requestQueue: Array<() => void> = [];
 
   constructor() {
-    this.baseUrl = config.apiBaseUrl.replace(/\/$/, ""); // remove trailing slash
+    this.baseUrl = config.apiBaseUrl.replace(/\/$/, "");
   }
 
   // ---------------------------------------------------------------------------
@@ -63,7 +64,10 @@ class ApiClient {
     try {
       const res = await fetch(`${this.baseUrl}/auth/token/refresh/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          // Don't send Authorization header for refresh
+        },
         body: JSON.stringify({ refresh: tokens.refresh }),
       });
 
@@ -75,7 +79,8 @@ class ApiClient {
       const data = await res.json();
       this.setTokens({ access: data.access, refresh: tokens.refresh });
       return data.access;
-    } catch {
+    } catch (error) {
+      console.error("Token refresh failed:", error);
       this.clearTokens();
       return null;
     }
@@ -104,10 +109,13 @@ class ApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
+        // CRITICAL: Always include credentials for CORS
+        credentials: 'include',
       });
 
       // ------------------ HANDLE 401 ------------------
       if (response.status === 401 && tokens?.refresh) {
+        // Prevent multiple simultaneous refresh attempts
         if (this.isRefreshing) {
           return new Promise((resolve, reject) => {
             this.subscribe(async (newToken) => {
@@ -117,12 +125,21 @@ class ApiClient {
               }
 
               headers["Authorization"] = `Bearer ${newToken}`;
-              const retry = await fetch(url, { ...options, headers });
+              try {
+                const retry = await fetch(url, { 
+                  ...options, 
+                  headers,
+                  credentials: 'include'
+                });
 
-              if (!retry.ok) {
-                reject(await this.parseError(retry));
-              } else {
-                resolve(await retry.json());
+                if (!retry.ok) {
+                  reject(await this.parseError(retry));
+                } else {
+                  const data = await retry.json();
+                  resolve(data);
+                }
+              } catch (error) {
+                reject(this.createError("Network request failed"));
               }
             });
           });
@@ -134,15 +151,29 @@ class ApiClient {
         this.notify(newToken);
 
         if (!newToken) {
-          window.location.href = "/auth";
+          // Only redirect on auth pages if token refresh fails
+          if (window.location.pathname !== '/auth') {
+            window.location.href = "/auth";
+          }
           throw this.createError("Session expired", 401);
         }
 
         headers["Authorization"] = `Bearer ${newToken}`;
-        const retry = await fetch(url, { ...options, headers });
+        const retry = await fetch(url, { 
+          ...options, 
+          headers,
+          credentials: 'include'
+        });
 
         if (!retry.ok) throw await this.parseError(retry);
-        return await retry.json();
+        
+        if (retry.status === 204) return {} as T;
+        
+        const contentType = retry.headers.get("content-type");
+        if (contentType?.includes("application/json")) {
+          return await retry.json();
+        }
+        return {} as T;
       }
 
       // ------------------ OTHER ERRORS ------------------
@@ -160,6 +191,14 @@ class ApiClient {
 
       return {} as T;
     } catch (error) {
+      // Better error handling for network failures
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw this.createError(
+          "Unable to connect to server. The service may be starting up (this can take 30 seconds on first request). Please try again.",
+          undefined,
+          { networkError: true }
+        );
+      }
       if (error instanceof Error) throw error;
       throw this.createError("Network request failed");
     }
