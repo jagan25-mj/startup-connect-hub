@@ -1,6 +1,6 @@
 """
 Django settings for startup_platform project.
-Production-ready configuration for Render deployment.
+Production-ready configuration for Render deployment with Vercel frontend.
 """
 
 import os
@@ -39,7 +39,8 @@ DEBUG = config(
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    ".onrender.com",
+    ".onrender.com",  # Allows all Render subdomains
+    "startup-connect-hub.onrender.com",  # Explicit domain
 ]
 
 
@@ -55,11 +56,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Third-party
+    # Third-party - CORS MUST be before rest_framework
+    "corsheaders",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
-    "corsheaders",
 
     # Local apps
     "accounts",
@@ -68,10 +69,10 @@ INSTALLED_APPS = [
 
 
 # ------------------------------------------------------------------------------
-# MIDDLEWARE
+# MIDDLEWARE - ORDER IS CRITICAL
 # ------------------------------------------------------------------------------
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # MUST be first
+    "corsheaders.middleware.CorsMiddleware",  # MUST be FIRST
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -176,6 +177,10 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # Disable session authentication to avoid CSRF conflicts
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
 }
 
 
@@ -197,38 +202,55 @@ SIMPLE_JWT = {
 
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+    
+    # Critical: These must match your token structure
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
 }
 
 
 # ------------------------------------------------------------------------------
-# CORS (VERCEL FRONTEND)
+# CORS (VERCEL FRONTEND) - CRITICAL CONFIGURATION
 # ------------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = [
     "https://startup-connect-hub.vercel.app",
     "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
+    # Add any additional Vercel preview URLs as needed
 ]
 
+# Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
 
+# Explicitly allow these methods
 CORS_ALLOW_METHODS = [
+    "DELETE",
     "GET",
+    "OPTIONS",
+    "PATCH",
     "POST",
     "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
 ]
 
+# CRITICAL: Explicitly allow Authorization header
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
-    "authorization",
+    "authorization",  # CRITICAL for JWT
     "content-type",
+    "dnt",
     "origin",
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
 ]
+
+# Expose these headers to browser
+CORS_EXPOSE_HEADERS = [
+    "content-type",
+    "x-csrftoken",
+]
+
+# Cache preflight requests for 1 hour
+CORS_PREFLIGHT_MAX_AGE = 3600
 
 
 # ------------------------------------------------------------------------------
@@ -237,16 +259,41 @@ CORS_ALLOW_HEADERS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://startup-connect-hub.vercel.app",
     "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
+    "https://startup-connect-hub.onrender.com",
 ]
+
+# IMPORTANT: Disable CSRF for API endpoints using JWT
+# Django REST Framework with JWT doesn't need CSRF protection
+CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = False
 
 
 # ------------------------------------------------------------------------------
 # PRODUCTION SECURITY (ONLY WHEN DEBUG = FALSE)
 # ------------------------------------------------------------------------------
 if not DEBUG:
+    # CRITICAL: Tell Django to trust Render's proxy
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # SSL/TLS settings
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    
+    # Security headers
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+    
+    # HSTS (uncomment after testing)
+    # SECURE_HSTS_SECONDS = 31536000
+    # SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # SECURE_HSTS_PRELOAD = True
+else:
+    # Development: Allow localhost origins
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+    ] + CORS_ALLOWED_ORIGINS
