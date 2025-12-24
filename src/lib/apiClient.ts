@@ -19,7 +19,6 @@ class ApiClient {
   private baseUrl: string;
   private isRefreshing = false;
   private refreshSubscribers: Array<(token: string | null) => void> = [];
-  private requestQueue: Array<() => void> = [];
 
   constructor() {
     this.baseUrl = config.apiBaseUrl.replace(/\/$/, "");
@@ -64,10 +63,7 @@ class ApiClient {
     try {
       const res = await fetch(`${this.baseUrl}/auth/token/refresh/`, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          // Don't send Authorization header for refresh
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh: tokens.refresh }),
       });
 
@@ -79,8 +75,7 @@ class ApiClient {
       const data = await res.json();
       this.setTokens({ access: data.access, refresh: tokens.refresh });
       return data.access;
-    } catch (error) {
-      console.error("Token refresh failed:", error);
+    } catch {
       this.clearTokens();
       return null;
     }
@@ -89,10 +84,7 @@ class ApiClient {
   // ---------------------------------------------------------------------------
   // CORE REQUEST METHOD
   // ---------------------------------------------------------------------------
-  async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const tokens = this.getTokens();
     const url = `${this.baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
@@ -109,13 +101,11 @@ class ApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
-        // CRITICAL: Always include credentials for CORS
-        credentials: 'include',
+        credentials: "include",
       });
 
-      // ------------------ HANDLE 401 ------------------
+      // ------------------ HANDLE 401 (TOKEN REFRESH) ------------------
       if (response.status === 401 && tokens?.refresh) {
-        // Prevent multiple simultaneous refresh attempts
         if (this.isRefreshing) {
           return new Promise((resolve, reject) => {
             this.subscribe(async (newToken) => {
@@ -125,20 +115,20 @@ class ApiClient {
               }
 
               headers["Authorization"] = `Bearer ${newToken}`;
+
               try {
-                const retry = await fetch(url, { 
-                  ...options, 
+                const retry = await fetch(url, {
+                  ...options,
                   headers,
-                  credentials: 'include'
+                  credentials: "include",
                 });
 
                 if (!retry.ok) {
                   reject(await this.parseError(retry));
                 } else {
-                  const data = await retry.json();
-                  resolve(data);
+                  resolve(await retry.json());
                 }
-              } catch (error) {
+              } catch {
                 reject(this.createError("Network request failed"));
               }
             });
@@ -151,29 +141,27 @@ class ApiClient {
         this.notify(newToken);
 
         if (!newToken) {
-          // Only redirect on auth pages if token refresh fails
-          if (window.location.pathname !== '/auth') {
+          if (window.location.pathname !== "/auth") {
             window.location.href = "/auth";
           }
           throw this.createError("Session expired", 401);
         }
 
         headers["Authorization"] = `Bearer ${newToken}`;
-        const retry = await fetch(url, { 
-          ...options, 
+        const retry = await fetch(url, {
+          ...options,
           headers,
-          credentials: 'include'
+          credentials: "include",
         });
 
         if (!retry.ok) throw await this.parseError(retry);
-        
         if (retry.status === 204) return {} as T;
-        
-        const contentType = retry.headers.get("content-type");
-        if (contentType?.includes("application/json")) {
-          return await retry.json();
-        }
-        return {} as T;
+
+        return retry.headers
+          .get("content-type")
+          ?.includes("application/json")
+          ? await retry.json()
+          : ({} as T);
       }
 
       // ------------------ OTHER ERRORS ------------------
@@ -184,21 +172,26 @@ class ApiClient {
       // ------------------ SUCCESS ------------------
       if (response.status === 204) return {} as T;
 
-      const contentType = response.headers.get("content-type");
-      if (contentType?.includes("application/json")) {
-        return await response.json();
-      }
+      return response.headers
+        .get("content-type")
+        ?.includes("application/json")
+        ? await response.json()
+        : ({} as T);
 
-      return {} as T;
     } catch (error) {
-      // Better error handling for network failures
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      // ------------------ IMPROVED NETWORK ERROR HANDLING ------------------
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        const isRenderColdStart = this.baseUrl.includes("onrender.com");
+
         throw this.createError(
-          "Unable to connect to server. The service may be starting up (this can take 30 seconds on first request). Please try again.",
+          isRenderColdStart
+            ? "Backend is starting up (Render free tier takes ~30s). Please wait and try again."
+            : "Unable to connect to server. Please check your internet connection.",
           undefined,
-          { networkError: true }
+          { networkError: true, isRenderColdStart }
         );
       }
+
       if (error instanceof Error) throw error;
       throw this.createError("Network request failed");
     }
@@ -222,11 +215,7 @@ class ApiClient {
     return this.createError(message, response.status, details);
   }
 
-  private createError(
-    message: string,
-    status?: number,
-    details?: unknown
-  ): ApiError {
+  private createError(message: string, status?: number, details?: unknown): ApiError {
     const error = new Error(message) as ApiError;
     error.status = status;
     error.details = details;
@@ -266,5 +255,5 @@ class ApiClient {
   }
 }
 
-// Singleton
+// Singleton instance
 export const apiClient = new ApiClient();

@@ -2,12 +2,29 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { ArrowLeft, Rocket, Globe, Building, Edit, Trash2, ExternalLink, Calendar } from 'lucide-react';
+import {
+  ArrowLeft,
+  Rocket,
+  Globe,
+  Building,
+  Edit,
+  Trash2,
+  ExternalLink,
+  Calendar,
+  AlertCircle,
+} from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { apiClient } from '@/lib/apiClient';
 
 interface Startup {
@@ -34,6 +51,11 @@ interface Interest {
   created_at: string;
 }
 
+type StartupError =
+  | { type: 'not-found'; message: string }
+  | { type: 'network'; message: string }
+  | { type: 'server'; message: string };
+
 export default function StartupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -41,7 +63,9 @@ export default function StartupDetail() {
 
   const [startup, setStartup] = useState<Startup | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<StartupError | null>(null);
   const [deleting, setDeleting] = useState(false);
+
   const [interested, setInterested] = useState(false);
   const [interestLoading, setInterestLoading] = useState(false);
   const [interests, setInterests] = useState<Interest[]>([]);
@@ -49,58 +73,82 @@ export default function StartupDetail() {
   const isOwner = user?.id === startup?.owner_id;
   const isFounder = user?.role === 'founder';
 
+  // ---------------------------------------------------------------------------
+  // FETCH STARTUP
+  // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!id) return;
+
     const fetchStartup = async () => {
-      if (!id) return;
+      setLoading(true);
+      setError(null);
 
       try {
         const data = await apiClient.get<Startup>(`/startups/${id}/`);
         setStartup(data);
-      } catch (error: any) {
-        console.error('Error fetching startup:', error);
-        if (error.status === 404) {
-          toast.error('Startup not found');
-          navigate('/startups');
+      } catch (err: any) {
+        console.error('Error fetching startup:', err);
+
+        if (err.status === 404) {
+          setError({
+            type: 'not-found',
+            message: 'This startup does not exist or has been removed.',
+          });
+        } else if (err.details?.networkError) {
+          setError({
+            type: 'network',
+            message: err.message || 'Unable to connect to server.',
+          });
         } else {
-          toast.error('Failed to load startup details');
+          setError({
+            type: 'server',
+            message: err.message || 'Failed to load startup details.',
+          });
         }
+
+        toast.error(err.message || 'Failed to load startup details');
       } finally {
         setLoading(false);
       }
     };
 
     fetchStartup();
-  }, [id, navigate]);
+  }, [id]);
 
+  // ---------------------------------------------------------------------------
+  // INTEREST CHECK + FETCH INTERESTS
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const checkInterestAndFetchInterests = async () => {
-      if (!id || !startup) return;
+    if (!id || !startup) return;
 
-      // Check if user has expressed interest
+    const loadInterestData = async () => {
       if (user?.role === 'talent') {
         try {
           const data = await apiClient.get<Interest[]>('/my/interests/');
-          const hasInterest = data.some((interest) => interest.startup_id === id);
-          setInterested(hasInterest);
-        } catch (error) {
-          console.error('Error checking interest:', error);
+          setInterested(data.some((i) => i.startup_id === id));
+        } catch {
+          /* non-critical */
         }
       }
 
-      // Fetch interests for owner
       if (isFounder && isOwner) {
         try {
-          const data = await apiClient.get<Interest[]>(`/startups/${id}/interests/`);
+          const data = await apiClient.get<Interest[]>(
+            `/startups/${id}/interests/`
+          );
           setInterests(data);
-        } catch (error) {
-          console.error('Error fetching interests:', error);
+        } catch {
+          /* non-critical */
         }
       }
     };
 
-    checkInterestAndFetchInterests();
+    loadInterestData();
   }, [id, startup, user, isFounder, isOwner]);
 
+  // ---------------------------------------------------------------------------
+  // DELETE
+  // ---------------------------------------------------------------------------
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this startup?')) return;
     if (!id) return;
@@ -110,25 +158,31 @@ export default function StartupDetail() {
       await apiClient.delete(`/startups/${id}/`);
       toast.success('Startup deleted successfully');
       navigate('/startups');
-    } catch (error) {
-      console.error('Error deleting startup:', error);
-      toast.error('Failed to delete startup');
+    } catch (err: any) {
+      toast.error(
+        err.details?.networkError
+          ? 'Connection failed. Please try again.'
+          : err.message || 'Failed to delete startup'
+      );
     } finally {
       setDeleting(false);
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // INTEREST TOGGLE
+  // ---------------------------------------------------------------------------
   const handleInterest = async () => {
     if (!id) return;
 
     setInterestLoading(true);
     try {
       const method = interested ? 'delete' : 'post';
-      const data = await apiClient[method]<{ message: string }>(
+      const res = await apiClient[method]<{ message: string }>(
         `/startups/${id}/interest/`
       );
 
-      toast.success(data.message);
+      toast.success(res.message);
       setInterested(!interested);
       setStartup((prev) =>
         prev
@@ -138,43 +192,75 @@ export default function StartupDetail() {
                 ? prev.interest_count - 1
                 : prev.interest_count + 1,
             }
-          : null
+          : prev
       );
-    } catch (error: any) {
-      console.error('Error updating interest:', error);
-      toast.error(error.message || 'Failed to update interest');
+    } catch (err: any) {
+      toast.error(
+        err.details?.networkError
+          ? 'Connection failed. Please try again.'
+          : err.message || 'Failed to update interest'
+      );
     } finally {
       setInterestLoading(false);
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // LOADING
+  // ---------------------------------------------------------------------------
   if (loading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              Loading startup details...
+            </p>
+          </div>
         </div>
       </DashboardLayout>
     );
   }
 
-  if (!startup) {
+  // ---------------------------------------------------------------------------
+  // ERROR
+  // ---------------------------------------------------------------------------
+  if (error) {
     return (
       <DashboardLayout>
-        <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-          <Rocket className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Startup not found</h3>
-          <p className="text-muted-foreground mb-4">
-            The startup you're looking for doesn't exist.
-          </p>
+        <div className="max-w-4xl mx-auto space-y-6">
+          <Alert
+            variant={error.type === 'network' ? 'default' : 'destructive'}
+          >
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <span>{error.message}</span>
+              {error.type === 'network' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  Retry
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+
           <Link to="/startups">
-            <Button>Back to Startups</Button>
+            <Button variant="outline">Back to Startups</Button>
           </Link>
         </div>
       </DashboardLayout>
     );
   }
 
+  if (!startup) return null;
+
+  // ---------------------------------------------------------------------------
+  // MAIN RENDER
+  // ---------------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -186,55 +272,52 @@ export default function StartupDetail() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-3xl font-display font-bold text-foreground">
-                  {startup.name}
-                </h1>
-                <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                  <Building className="h-4 w-4" />
-                  Founded by {startup.owner_name}
-                </p>
-              </div>
-              {isOwner && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/startups/${startup.id}/edit`)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {deleting ? 'Deleting...' : 'Delete'}
-                  </Button>
-                </div>
-              )}
+
+          <div className="flex-1 flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">{startup.name}</h1>
+              <p className="text-muted-foreground flex items-center gap-2 mt-1">
+                <Building className="h-4 w-4" />
+                Founded by {startup.owner_name}
+              </p>
             </div>
+
+            {isOwner && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    navigate(`/startups/${startup.id}/edit`)
+                  }
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* CONTENT */}
         <div className="grid gap-6 md:grid-cols-3">
           <div className="md:col-span-2 space-y-6">
-            <Card className="shadow-card">
+            <Card>
               <CardHeader>
-                <CardTitle className="font-display">About</CardTitle>
+                <CardTitle>About</CardTitle>
               </CardHeader>
               <CardContent>
-                {startup.description ? (
-                  <p className="text-foreground leading-relaxed">
-                    {startup.description}
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground italic">
+                {startup.description || (
+                  <p className="italic text-muted-foreground">
                     No description provided.
                   </p>
                 )}
@@ -242,9 +325,9 @@ export default function StartupDetail() {
             </Card>
 
             {startup.website && (
-              <Card className="shadow-card">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
                     <Globe className="h-5 w-5" />
                     Website
                   </CardTitle>
@@ -265,119 +348,76 @@ export default function StartupDetail() {
           </div>
 
           <div className="space-y-6">
-            <Card className="shadow-card">
+            <Card>
               <CardHeader>
-                <CardTitle className="font-display">Details</CardTitle>
+                <CardTitle>Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {startup.industry && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Industry</p>
-                    <Badge variant="secondary" className="mt-1">
-                      {startup.industry}
-                    </Badge>
-                  </div>
+                  <Badge variant="secondary">{startup.industry}</Badge>
                 )}
-
                 {startup.stage && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Stage</p>
-                    <Badge variant="outline" className="mt-1">
-                      {startup.stage}
-                    </Badge>
-                  </div>
+                  <Badge variant="outline">{startup.stage}</Badge>
                 )}
 
                 <Separator />
 
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Created
-                  </p>
-                  <p className="text-sm text-foreground mt-1">
-                    {new Date(startup.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
-                </div>
+                <p className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4" />
+                  {new Date(startup.created_at).toLocaleDateString()}
+                </p>
 
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Interest Count</p>
-                  <p className="text-sm text-foreground mt-1">
-                    {startup.interest_count} {startup.interest_count === 1 ? 'person' : 'people'} interested
-                  </p>
-                </div>
+                <p className="text-sm">
+                  {startup.interest_count} interested
+                </p>
               </CardContent>
             </Card>
 
             {user?.role === 'talent' && (
-              <Card className="shadow-card">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Button
-                      onClick={handleInterest}
-                      disabled={interestLoading}
-                      className="w-full"
-                      variant={interested ? "outline" : "default"}
-                    >
-                      {interestLoading ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                      ) : (
-                        <Rocket className="h-4 w-4 mr-2" />
-                      )}
-                      {interested ? 'Withdraw Interest' : 'Express Interest'}
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {interested ? 'You have expressed interest in this startup' : 'Show your interest to the founder'}
-                    </p>
-                  </div>
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <Button
+                    className="w-full"
+                    onClick={handleInterest}
+                    disabled={interestLoading}
+                    variant={interested ? 'outline' : 'default'}
+                  >
+                    <Rocket className="h-4 w-4 mr-2" />
+                    {interested
+                      ? 'Withdraw Interest'
+                      : 'Express Interest'}
+                  </Button>
                 </CardContent>
               </Card>
             )}
 
             {isFounder && isOwner && interests.length > 0 && (
-              <Card className="shadow-card">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="font-display">Interested Talents</CardTitle>
+                  <CardTitle>Interested Talents</CardTitle>
                   <CardDescription>
-                    {interests.length} {interests.length === 1 ? 'person' : 'people'} interested
+                    {interests.length} interested
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {interests.map((interest) => (
-                      <div key={interest.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-sm">{interest.user_name}</p>
-                          <p className="text-xs text-muted-foreground">{interest.user_email}</p>
-                        </div>
+                <CardContent className="space-y-3">
+                  {interests.map((i) => (
+                    <div
+                      key={i.id}
+                      className="flex justify-between p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium text-sm">
+                          {i.user_name}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(interest.created_at).toLocaleDateString()}
+                          {i.user_email}
                         </p>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {!isFounder && user?.role !== 'talent' && (
-              <Card className="shadow-card">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Rocket className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      Interested in starting your own startup?
-                    </p>
-                    <Link to="/profile" className="block mt-2">
-                      <Button variant="outline" size="sm">
-                        Update Profile
-                      </Button>
-                    </Link>
-                  </div>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(i.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             )}
@@ -385,6 +425,5 @@ export default function StartupDetail() {
         </div>
       </div>
     </DashboardLayout>
-
   );
 }

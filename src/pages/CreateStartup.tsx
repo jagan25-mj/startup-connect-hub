@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ArrowLeft, Rocket } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
@@ -36,6 +48,7 @@ const STAGES = [
 export default function CreateStartup() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -45,40 +58,77 @@ export default function CreateStartup() {
     website: '',
   });
 
-  // Redirect if not founder
-  if (user?.role !== 'founder') {
-    navigate('/startups');
+  // ---------------------------------------------------------------------------
+  // REDIRECT NON-FOUNDERS (SAFE)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (user && user.role !== 'founder') {
+      navigate('/startups');
+    }
+  }, [user, navigate]);
+
+  if (!user || user.role !== 'founder') {
     return null;
   }
 
+  // ---------------------------------------------------------------------------
+  // SUBMIT
+  // ---------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const startupData = {
+      await apiClient.post('/startups/', {
         name: formData.name,
         description: formData.description || null,
         industry: formData.industry || null,
         stage: formData.stage || null,
         website: formData.website || null,
-      };
+      });
 
-      await apiClient.post('/startups/', startupData);
       toast.success('Startup created successfully!');
       navigate('/startups');
     } catch (error: any) {
       console.error('Error creating startup:', error);
-      toast.error(error.message || 'Failed to create startup');
+
+      // NETWORK ERROR (Render cold start / CORS / offline)
+      if (error.details?.networkError) {
+        toast.error(
+          error.message ||
+            'Unable to connect to server. Please try again in a moment.'
+        );
+      }
+      // VALIDATION ERROR
+      else if (error.status === 400 && error.details) {
+        const validationErrors = Object.entries(error.details)
+          .map(
+            ([field, messages]) =>
+              `${field}: ${(messages as string[]).join(', ')}`
+          )
+          .join('; ');
+        toast.error(`Validation error: ${validationErrors}`);
+      }
+      // PERMISSION ERROR
+      else if (error.status === 403) {
+        toast.error('Only founders can create startups');
+      }
+      // FALLBACK
+      else {
+        toast.error(error.message || 'Failed to create startup');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -110,25 +160,28 @@ export default function CreateStartup() {
               Provide information about your startup
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="name">Startup Name *</Label>
+                <Label>Startup Name *</Label>
                 <Input
-                  id="name"
                   value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange('name', e.target.value)
+                  }
                   placeholder="Enter your startup name"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label>Description</Label>
                 <Textarea
-                  id="description"
                   value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange('description', e.target.value)
+                  }
                   placeholder="Describe your startup..."
                   rows={4}
                 />
@@ -136,10 +189,12 @@ export default function CreateStartup() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="industry">Industry</Label>
+                  <Label>Industry</Label>
                   <Select
                     value={formData.industry}
-                    onValueChange={(value) => handleInputChange('industry', value)}
+                    onValueChange={(v) =>
+                      handleInputChange('industry', v)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select industry" />
@@ -155,10 +210,12 @@ export default function CreateStartup() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="stage">Stage</Label>
+                  <Label>Stage</Label>
                   <Select
                     value={formData.stage}
-                    onValueChange={(value) => handleInputChange('stage', value)}
+                    onValueChange={(v) =>
+                      handleInputChange('stage', v)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select stage" />
@@ -175,12 +232,13 @@ export default function CreateStartup() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
+                <Label>Website</Label>
                 <Input
-                  id="website"
                   type="url"
                   value={formData.website}
-                  onChange={(e) => handleInputChange('website', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange('website', e.target.value)
+                  }
                   placeholder="https://yourstartup.com"
                 />
               </div>
@@ -189,17 +247,17 @@ export default function CreateStartup() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate('/startups')}
                   className="flex-1"
+                  onClick={() => navigate('/startups')}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  disabled={loading || !formData.name.trim()}
                   className="flex-1"
+                  disabled={loading || !formData.name.trim()}
                 >
-                  {loading ? 'Creating...' : 'Create Startup'}
+                  {loading ? 'Creating…' : 'Create Startup'}
                 </Button>
               </div>
             </form>

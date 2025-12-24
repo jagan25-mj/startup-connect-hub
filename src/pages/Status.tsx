@@ -1,8 +1,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, XCircle, AlertCircle, Activity, Database, Shield } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Activity,
+  Database,
+  Shield,
+} from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 
 interface HealthCheck {
@@ -14,6 +27,7 @@ interface HealthCheck {
 
 export default function Status() {
   useAuth(); // preserved hook usage
+
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -22,57 +36,76 @@ export default function Status() {
     setLoading(true);
     const results: HealthCheck[] = [];
 
-    // API health check
+    // ------------------------------------------------------------------
+    // API HEALTH CHECK
+    // ------------------------------------------------------------------
     const apiStart = Date.now();
     try {
       await apiClient.get('/health/');
-      const apiLatency = Date.now() - apiStart;
+      const latency = Date.now() - apiStart;
+
       results.push({
         name: 'API Server',
         status: 'operational',
-        latency: apiLatency,
+        latency,
         icon: Activity,
       });
-    } catch {
+    } catch (error: any) {
+      console.error('API health check failed:', error);
+
       results.push({
         name: 'API Server',
-        status: 'down',
+        status: error.details?.networkError ? 'degraded' : 'down',
         icon: Activity,
       });
     }
 
-    // Database connectivity check
+    // ------------------------------------------------------------------
+    // DATABASE CHECK
+    // ------------------------------------------------------------------
     const dbStart = Date.now();
     try {
       await apiClient.get('/auth/me/');
-      const dbLatency = Date.now() - dbStart;
+      const latency = Date.now() - dbStart;
+
       results.push({
         name: 'Database',
         status: 'operational',
-        latency: dbLatency,
+        latency,
         icon: Database,
       });
-    } catch {
+    } catch (error: any) {
+      console.error('Database check failed:', error);
+
       results.push({
         name: 'Database',
-        status: 'down',
+        status: error.details?.networkError ? 'degraded' : 'down',
         icon: Database,
       });
     }
 
-    // Auth service check
+    // ------------------------------------------------------------------
+    // AUTH SERVICE (CLIENT-SIDE)
+    // ------------------------------------------------------------------
     results.push({
       name: 'Authentication',
       status: 'operational',
       icon: Shield,
     });
 
-    // Overall platform status
-    const allOperational = results.every((r) => r.status === 'operational');
+    // ------------------------------------------------------------------
+    // OVERALL PLATFORM STATUS
+    // ------------------------------------------------------------------
     const anyDown = results.some((r) => r.status === 'down');
+    const anyDegraded = results.some((r) => r.status === 'degraded');
+
     results.unshift({
       name: 'Platform',
-      status: anyDown ? 'down' : allOperational ? 'operational' : 'degraded',
+      status: anyDown
+        ? 'down'
+        : anyDegraded
+        ? 'degraded'
+        : 'operational',
       icon: Activity,
     });
 
@@ -87,6 +120,9 @@ export default function Status() {
     return () => clearInterval(interval);
   }, [runHealthChecks]);
 
+  // ------------------------------------------------------------------
+  // UI HELPERS
+  // ------------------------------------------------------------------
   const getStatusIcon = (status: HealthCheck['status']) => {
     switch (status) {
       case 'operational':
@@ -123,97 +159,62 @@ export default function Status() {
   const overallStatus =
     checks.find((c) => c.name === 'Platform')?.status || 'operational';
 
+  // ------------------------------------------------------------------
+  // UI
+  // ------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
         <div className="text-center">
-          <h1 className="text-3xl font-display font-bold text-foreground">
-            System Status
-          </h1>
+          <h1 className="text-3xl font-display font-bold">System Status</h1>
           <p className="text-muted-foreground mt-1">
             Real-time platform health monitoring
           </p>
         </div>
 
-        {/* Overall Status Banner */}
-        <Card
-          className={`shadow-card border-2 ${
-            overallStatus === 'operational'
-              ? 'border-success/20'
-              : overallStatus === 'degraded'
-              ? 'border-warning/20'
-              : 'border-destructive/20'
-          }`}
-        >
-          <CardContent className="py-8">
-            <div className="flex flex-col items-center">
-              <div
-                className={`p-4 rounded-full mb-4 ${
-                  overallStatus === 'operational'
-                    ? 'bg-success/10'
-                    : overallStatus === 'degraded'
-                    ? 'bg-warning/10'
-                    : 'bg-destructive/10'
-                }`}
-              >
-                {overallStatus === 'operational' ? (
-                  <CheckCircle className="h-12 w-12 text-success" />
-                ) : overallStatus === 'degraded' ? (
-                  <AlertCircle className="h-12 w-12 text-warning" />
-                ) : (
-                  <XCircle className="h-12 w-12 text-destructive" />
-                )}
-              </div>
-              <h2 className="text-2xl font-display font-bold text-foreground">
-                {overallStatus === 'operational'
-                  ? 'All Systems Operational'
-                  : overallStatus === 'degraded'
-                  ? 'Partial System Degradation'
-                  : 'System Outage'}
-              </h2>
-              {lastChecked && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Last checked: {lastChecked.toLocaleTimeString()}
-                </p>
-              )}
+        {/* OVERALL STATUS */}
+        <Card className="shadow-card">
+          <CardContent className="py-8 text-center">
+            <div className="mb-4 flex justify-center">
+              {getStatusIcon(overallStatus)}
             </div>
+            <h2 className="text-2xl font-display font-bold">
+              {overallStatus === 'operational'
+                ? 'All Systems Operational'
+                : overallStatus === 'degraded'
+                ? 'Partial System Degradation'
+                : 'System Outage'}
+            </h2>
+            {lastChecked && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Last checked: {lastChecked.toLocaleTimeString()}
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        {/* Individual Services */}
+        {/* SERVICES */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle className="font-display">Service Status</CardTitle>
+            <CardTitle>Service Status</CardTitle>
             <CardDescription>Individual component health</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-4 rounded-lg bg-muted/50 animate-pulse"
-                  >
-                    <div className="h-5 w-32 bg-muted rounded" />
-                    <div className="h-5 w-24 bg-muted rounded" />
-                  </div>
-                ))}
-              </div>
+              <p className="text-muted-foreground">Running checks…</p>
             ) : (
               checks.map((check) => (
                 <div
                   key={check.name}
-                  className="flex items-center justify-between p-4 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                  className="flex items-center justify-between p-4 rounded-lg bg-muted/30"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-accent">
-                      <check.icon className="h-4 w-4 text-accent-foreground" />
-                    </div>
+                    <check.icon className="h-4 w-4" />
                     <div>
-                      <p className="font-medium text-foreground">{check.name}</p>
+                      <p className="font-medium">{check.name}</p>
                       {check.latency !== undefined && (
                         <p className="text-xs text-muted-foreground">
-                          Response time: {check.latency}ms
+                          {check.latency} ms
                         </p>
                       )}
                     </div>
@@ -221,7 +222,7 @@ export default function Status() {
                   <div className="flex items-center gap-2">
                     {getStatusIcon(check.status)}
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                      className={`px-2 py-1 rounded-full text-xs ${getStatusColor(
                         check.status
                       )}`}
                     >
@@ -234,13 +235,9 @@ export default function Status() {
           </CardContent>
         </Card>
 
-        {/* Uptime Notice */}
-        <Card className="shadow-card bg-accent/30">
-          <CardContent className="py-4">
-            <p className="text-sm text-center text-muted-foreground">
-              Status updates automatically every 30 seconds. For urgent issues,
-              please contact support.
-            </p>
+        <Card className="bg-accent/30">
+          <CardContent className="py-4 text-center text-sm text-muted-foreground">
+            Status refreshes automatically every 30 seconds.
           </CardContent>
         </Card>
       </div>

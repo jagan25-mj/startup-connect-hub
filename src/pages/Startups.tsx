@@ -1,15 +1,41 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Rocket, Globe, Building, Trash2, Edit } from 'lucide-react';
+import {
+  Plus,
+  Rocket,
+  Globe,
+  Building,
+  Trash2,
+  Edit,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/apiClient';
 
@@ -53,11 +79,14 @@ const STAGES = [
 
 export default function Startups() {
   const { user } = useAuth();
+  const isFounder = user?.role === 'founder';
+
   const [startups, setStartups] = useState<Startup[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [editingStartup, setEditingStartup] = useState<Startup | null>(null);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -66,16 +95,29 @@ export default function Startups() {
     website: '',
   });
 
-  const isFounder = user?.role === 'founder';
-
+  // ---------------------------------------------------------------------------
+  // FETCH STARTUPS
+  // ---------------------------------------------------------------------------
   const fetchStartups = useCallback(async () => {
+    setLoading(true);
     try {
       const endpoint = isFounder ? '/startups/my/' : '/startups/';
-      const data = await apiClient.get<Startup[] | PaginatedResponse<Startup>>(endpoint);
+      const data = await apiClient.get<
+        Startup[] | PaginatedResponse<Startup>
+      >(endpoint);
+
       setStartups(Array.isArray(data) ? data : data.results || []);
     } catch (error: any) {
       console.error('Error fetching startups:', error);
-      toast.error('Failed to load startups');
+
+      if (error.details?.networkError) {
+        toast.error(
+          error.message ||
+            'Unable to connect to server. Backend may be starting up.'
+        );
+      } else {
+        toast.error(error.message || 'Failed to load startups');
+      }
     } finally {
       setLoading(false);
     }
@@ -87,13 +129,17 @@ export default function Startups() {
     }
   }, [user, fetchStartups]);
 
+  // ---------------------------------------------------------------------------
+  // CREATE / UPDATE STARTUP
+  // ---------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
     setFormLoading(true);
 
     try {
-      const startupData = {
+      const payload = {
         name: formData.name,
         description: formData.description || null,
         industry: formData.industry || null,
@@ -102,10 +148,10 @@ export default function Startups() {
       };
 
       if (editingStartup) {
-        await apiClient.put(`/startups/${editingStartup.id}/`, startupData);
+        await apiClient.put(`/startups/${editingStartup.id}/`, payload);
         toast.success('Startup updated successfully!');
       } else {
-        await apiClient.post('/startups/', startupData);
+        await apiClient.post('/startups/', payload);
         toast.success('Startup created successfully!');
       }
 
@@ -114,12 +160,32 @@ export default function Startups() {
       fetchStartups();
     } catch (error: any) {
       console.error('Error saving startup:', error);
-      toast.error(error.message || 'Failed to save startup');
+
+      if (error.details?.networkError) {
+        toast.error(
+          'Connection failed. Please check your internet and try again.'
+        );
+      } else if (error.status === 400 && error.details) {
+        const validationErrors = Object.entries(error.details)
+          .map(
+            ([field, messages]) =>
+              `${field}: ${(messages as string[]).join(', ')}`
+          )
+          .join('; ');
+        toast.error(`Validation error: ${validationErrors}`);
+      } else if (error.status === 403) {
+        toast.error('Only founders can manage startups');
+      } else {
+        toast.error(error.message || 'Failed to save startup');
+      }
     } finally {
       setFormLoading(false);
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // DELETE STARTUP
+  // ---------------------------------------------------------------------------
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this startup?')) return;
 
@@ -129,10 +195,20 @@ export default function Startups() {
       fetchStartups();
     } catch (error: any) {
       console.error('Error deleting startup:', error);
-      toast.error(error.message || 'Failed to delete startup');
+
+      if (error.details?.networkError) {
+        toast.error(
+          'Connection failed. Please check your internet and try again.'
+        );
+      } else {
+        toast.error(error.message || 'Failed to delete startup');
+      }
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
   const openEditDialog = (startup: Startup) => {
     setEditingStartup(startup);
     setFormData({
@@ -146,7 +222,13 @@ export default function Startups() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', industry: '', stage: '', website: '' });
+    setFormData({
+      name: '',
+      description: '',
+      industry: '',
+      stage: '',
+      website: '',
+    });
     setEditingStartup(null);
   };
 
@@ -155,20 +237,24 @@ export default function Startups() {
     if (!open) resetForm();
   };
 
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
   return (
-   <DashboardLayout>
+    <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">
+            <h1 className="text-3xl font-display font-bold">
               {isFounder ? 'My Startups' : 'Explore Startups'}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {isFounder 
+              {isFounder
                 ? 'Manage and showcase your startup ventures'
                 : 'Discover exciting startup opportunities'}
             </p>
           </div>
+
           {isFounder && (
             <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
               <DialogTrigger asChild>
@@ -177,73 +263,82 @@ export default function Startups() {
                   Create Startup
                 </Button>
               </DialogTrigger>
+
               <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
-                  <DialogTitle className="font-display">
-                    {editingStartup ? 'Edit Startup' : 'Create New Startup'}
+                  <DialogTitle>
+                    {editingStartup ? 'Edit Startup' : 'Create Startup'}
                   </DialogTitle>
                   <DialogDescription>
-                    {editingStartup 
+                    {editingStartup
                       ? 'Update your startup information'
                       : 'Add your startup to the platform'}
                   </DialogDescription>
                 </DialogHeader>
+
                 <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Startup Name *</Label>
+                  <div>
+                    <Label>Startup Name *</Label>
                     <Input
-                      id="name"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="My Amazing Startup"
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
                       required
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
+                  <div>
+                    <Label>Description</Label>
                     <Textarea
-                      id="description"
                       value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="What does your startup do?"
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
+                      }
                       rows={3}
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div>
                       <Label>Industry</Label>
                       <Select
                         value={formData.industry}
-                        onValueChange={(value) => setFormData({ ...formData, industry: value })}
+                        onValueChange={(v) =>
+                          setFormData({ ...formData, industry: v })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select industry" />
                         </SelectTrigger>
                         <SelectContent>
-                          {INDUSTRIES.map((industry) => (
-                            <SelectItem key={industry} value={industry}>
-                              {industry}
+                          {INDUSTRIES.map((i) => (
+                            <SelectItem key={i} value={i}>
+                              {i}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    <div className="space-y-2">
+                    <div>
                       <Label>Stage</Label>
                       <Select
                         value={formData.stage}
-                        onValueChange={(value) => setFormData({ ...formData, stage: value })}
+                        onValueChange={(v) =>
+                          setFormData({ ...formData, stage: v })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select stage" />
                         </SelectTrigger>
                         <SelectContent>
-                          {STAGES.map((stage) => (
-                            <SelectItem key={stage} value={stage}>
-                              {stage}
+                          {STAGES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -251,23 +346,31 @@ export default function Startups() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="website">Website</Label>
+                  <div>
+                    <Label>Website</Label>
                     <Input
-                      id="website"
                       type="url"
                       value={formData.website}
-                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      placeholder="https://mystartup.com"
+                      onChange={(e) =>
+                        setFormData({ ...formData, website: e.target.value })
+                      }
                     />
                   </div>
 
                   <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="outline" onClick={() => handleDialogChange(false)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleDialogChange(false)}
+                    >
                       Cancel
                     </Button>
                     <Button type="submit" disabled={formLoading}>
-                      {formLoading ? 'Saving...' : editingStartup ? 'Update' : 'Create'}
+                      {formLoading
+                        ? 'Saving…'
+                        : editingStartup
+                        ? 'Update'
+                        : 'Create'}
                     </Button>
                   </div>
                 </form>
@@ -276,76 +379,36 @@ export default function Startups() {
           )}
         </div>
 
-        {/* Startups Grid */}
+        {/* GRID */}
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="shadow-card animate-pulse">
-                <CardHeader>
-                  <div className="h-6 bg-muted rounded w-2/3" />
-                  <div className="h-4 bg-muted rounded w-1/2 mt-2" />
-                </CardHeader>
-                <CardContent>
-                  <div className="h-20 bg-muted rounded" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <p className="text-muted-foreground">Loading startups…</p>
         ) : startups.length === 0 ? (
-          <Card className="shadow-card">
-            <CardContent className="flex flex-col items-center justify-center py-16">
-              <div className="h-16 w-16 rounded-full bg-accent flex items-center justify-center mb-4">
-                <Rocket className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="font-display text-xl font-semibold text-foreground mb-2">
-                {isFounder ? 'No startups yet' : 'No startups to show'}
-              </h3>
-              <p className="text-muted-foreground text-center max-w-sm">
-                {isFounder 
-                  ? 'Create your first startup to get started and attract talent to your team.'
-                  : 'Check back soon for new startup opportunities.'}
+          <Card>
+            <CardContent className="py-16 text-center">
+              <Rocket className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+              <p className="text-muted-foreground">
+                {isFounder
+                  ? 'Create your first startup to get started.'
+                  : 'No startups available right now.'}
               </p>
-              {isFounder && (
-                <Button className="mt-6 gap-2" onClick={() => setDialogOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Create Startup
-                </Button>
-              )}
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {startups.map((startup, index) => (
-              <Card 
-                key={startup.id} 
-                className="shadow-card hover:shadow-elevated transition-shadow animate-slide-up"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
+            {startups.map((startup) => (
+              <Card key={startup.id} className="shadow-card">
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg gradient-primary flex items-center justify-center">
-                        <Building className="h-5 w-5 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <CardTitle className="font-display text-lg">{startup.name}</CardTitle>
-                        <div className="flex gap-2 mt-1">
-                          {startup.industry && (
-                            <Badge variant="secondary" className="text-xs">
-                              {startup.industry}
-                            </Badge>
-                          )}
-                          {startup.stage && (
-                            <Badge variant="outline" className="text-xs">
-                              {startup.stage}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                  <CardTitle>{startup.name}</CardTitle>
+                  <div className="flex gap-2 mt-2">
+                    {startup.industry && (
+                      <Badge variant="secondary">{startup.industry}</Badge>
+                    )}
+                    {startup.stage && (
+                      <Badge variant="outline">{startup.stage}</Badge>
+                    )}
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3">
                   {startup.description && (
                     <p className="text-sm text-muted-foreground line-clamp-3">
                       {startup.description}
@@ -356,27 +419,25 @@ export default function Startups() {
                       href={startup.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm text-primary hover:underline"
+                      className="flex items-center gap-2 text-primary text-sm"
                     >
                       <Globe className="h-4 w-4" />
                       Visit website
                     </a>
                   )}
                   {isFounder && (
-                    <div className="flex gap-2 pt-2 border-t border-border">
+                    <div className="flex gap-2 pt-2">
                       <Button
-                        variant="outline"
                         size="sm"
-                        className="flex-1"
+                        variant="outline"
                         onClick={() => openEditDialog(startup)}
                       >
                         <Edit className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
                       <Button
-                        variant="outline"
                         size="sm"
-                        className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                        variant="destructive"
                         onClick={() => handleDelete(startup.id)}
                       >
                         <Trash2 className="h-4 w-4" />

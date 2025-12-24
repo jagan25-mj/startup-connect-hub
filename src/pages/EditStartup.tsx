@@ -2,14 +2,27 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Rocket } from 'lucide-react';
+import { ArrowLeft, Rocket, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { apiClient } from '@/lib/apiClient';
 
 interface Startup {
@@ -24,6 +37,11 @@ interface Startup {
   created_at: string;
   updated_at: string;
 }
+
+type EditStartupError =
+  | { type: 'not-found'; message: string }
+  | { type: 'network'; message: string }
+  | { type: 'server'; message: string };
 
 const INDUSTRIES = [
   'Technology',
@@ -53,7 +71,9 @@ export default function EditStartup() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<EditStartupError | null>(null);
   const [startup, setStartup] = useState<Startup | null>(null);
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -62,9 +82,15 @@ export default function EditStartup() {
     website: '',
   });
 
+  // ---------------------------------------------------------------------------
+  // FETCH STARTUP
+  // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!id) return;
+
     const fetchStartup = async () => {
-      if (!id) return;
+      setLoading(true);
+      setError(null);
 
       try {
         const data = await apiClient.get<Startup>(`/startups/${id}/`);
@@ -83,9 +109,27 @@ export default function EditStartup() {
           stage: data.stage || '',
           website: data.website || '',
         });
-      } catch (error: any) {
-        console.error('Error fetching startup:', error);
-        toast.error('Failed to load startup');
+      } catch (err: any) {
+        console.error('Error fetching startup:', err);
+
+        if (err.status === 404) {
+          setError({
+            type: 'not-found',
+            message: 'This startup does not exist or has been removed.',
+          });
+        } else if (err.details?.networkError) {
+          setError({
+            type: 'network',
+            message: err.message || 'Unable to connect to server.',
+          });
+        } else {
+          setError({
+            type: 'server',
+            message: err.message || 'Failed to load startup.',
+          });
+        }
+
+        toast.error(err.message || 'Failed to load startup');
       } finally {
         setLoading(false);
       }
@@ -94,6 +138,9 @@ export default function EditStartup() {
     fetchStartup();
   }, [id, user?.id, navigate]);
 
+  // ---------------------------------------------------------------------------
+  // SUBMIT
+  // ---------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
@@ -101,54 +148,106 @@ export default function EditStartup() {
     setSaving(true);
 
     try {
-      const startupData = {
+      await apiClient.put(`/startups/${id}/`, {
         name: formData.name,
         description: formData.description || null,
         industry: formData.industry || null,
         stage: formData.stage || null,
         website: formData.website || null,
-      };
+      });
 
-      await apiClient.put(`/startups/${id}/`, startupData);
       toast.success('Startup updated successfully!');
       navigate(`/startups/${id}`);
-    } catch (error: any) {
-      console.error('Error updating startup:', error);
-      toast.error(error.message || 'Failed to update startup');
+    } catch (err: any) {
+      console.error('Error updating startup:', err);
+
+      if (err.details?.networkError) {
+        toast.error('Connection failed. Please try again.');
+      } else if (err.status === 400 && err.details) {
+        const validationErrors = Object.entries(err.details)
+          .map(
+            ([field, messages]) =>
+              `${field}: ${(messages as string[]).join(', ')}`
+          )
+          .join('; ');
+        toast.error(`Validation error: ${validationErrors}`);
+      } else {
+        toast.error(err.message || 'Failed to update startup');
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // ---------------------------------------------------------------------------
+  // LOADING
+  // ---------------------------------------------------------------------------
   if (loading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading startup…</p>
+          </div>
         </div>
       </DashboardLayout>
     );
   }
 
-  if (!startup) {
+  // ---------------------------------------------------------------------------
+  // ERROR
+  // ---------------------------------------------------------------------------
+  if (error) {
     return (
       <DashboardLayout>
-        <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-          <Rocket className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Startup not found</h3>
-          <p className="text-muted-foreground mb-4">
-            The startup you're trying to edit doesn't exist.
-          </p>
-          <Button onClick={() => navigate('/startups')}>Back to Startups</Button>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/startups')}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="text-3xl font-bold">Edit Startup</h1>
+          </div>
+
+          <Alert
+            variant={error.type === 'network' ? 'default' : 'destructive'}
+          >
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <span>{error.message}</span>
+              {error.type === 'network' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  Retry
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+
+          <Button variant="outline" onClick={() => navigate('/startups')}>
+            Back to Startups
+          </Button>
         </div>
       </DashboardLayout>
     );
   }
 
+  if (!startup) return null;
+
+  // ---------------------------------------------------------------------------
+  // FORM
+  // ---------------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -161,10 +260,8 @@ export default function EditStartup() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-display font-bold">
-              Edit Startup
-            </h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-3xl font-bold">Edit Startup</h1>
+            <p className="text-muted-foreground">
               Update your startup information
             </p>
           </div>
@@ -187,9 +284,7 @@ export default function EditStartup() {
                 <Label>Startup Name *</Label>
                 <Input
                   value={formData.name}
-                  onChange={(e) =>
-                    handleInputChange('name', e.target.value)
-                  }
+                  onChange={(e) => handleChange('name', e.target.value)}
                   required
                 />
               </div>
@@ -200,7 +295,7 @@ export default function EditStartup() {
                   rows={4}
                   value={formData.description}
                   onChange={(e) =>
-                    handleInputChange('description', e.target.value)
+                    handleChange('description', e.target.value)
                   }
                 />
               </div>
@@ -210,15 +305,13 @@ export default function EditStartup() {
                   <Label>Industry</Label>
                   <Select
                     value={formData.industry}
-                    onValueChange={(v) =>
-                      handleInputChange('industry', v)
-                    }
+                    onValueChange={(v) => handleChange('industry', v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select industry" />
                     </SelectTrigger>
                     <SelectContent>
-                      {INDUSTRIES.map(i => (
+                      {INDUSTRIES.map((i) => (
                         <SelectItem key={i} value={i}>
                           {i}
                         </SelectItem>
@@ -231,15 +324,13 @@ export default function EditStartup() {
                   <Label>Stage</Label>
                   <Select
                     value={formData.stage}
-                    onValueChange={(v) =>
-                      handleInputChange('stage', v)
-                    }
+                    onValueChange={(v) => handleChange('stage', v)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      {STAGES.map(s => (
+                      {STAGES.map((s) => (
                         <SelectItem key={s} value={s}>
                           {s}
                         </SelectItem>
@@ -254,9 +345,7 @@ export default function EditStartup() {
                 <Input
                   type="url"
                   value={formData.website}
-                  onChange={(e) =>
-                    handleInputChange('website', e.target.value)
-                  }
+                  onChange={(e) => handleChange('website', e.target.value)}
                 />
               </div>
 
@@ -274,7 +363,7 @@ export default function EditStartup() {
                   className="flex-1"
                   disabled={saving || !formData.name.trim()}
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {saving ? 'Saving…' : 'Save Changes'}
                 </Button>
               </div>
             </form>

@@ -2,13 +2,23 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { User, Mail, Github, Linkedin, Globe, Edit, Building, Briefcase, Calendar } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Github,
+  Linkedin,
+  Globe,
+  Edit,
+  Briefcase,
+  Calendar,
+  AlertCircle,
+} from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Profile {
   id: string;
@@ -26,28 +36,58 @@ interface Profile {
   updated_at: string;
 }
 
+type ProfileError =
+  | { type: 'not-found'; message: string }
+  | { type: 'network'; message: string }
+  | { type: 'unauthorized'; message: string }
+  | { type: 'server'; message: string };
+
 export default function Profile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ProfileError | null>(null);
 
   const isOwnProfile = user?.id === id;
 
   useEffect(() => {
+    if (!id) return;
+
     const fetchProfile = async () => {
-      if (!id) return;
+      setLoading(true);
+      setError(null);
 
       try {
         const data = await apiClient.get<Profile>(`/profiles/${id}/`);
         setProfile(data);
-      } catch (error: any) {
-        console.error('Error fetching profile:', error);
-        if (error.status === 404) {
-          toast.error('Profile not found');
+      } catch (err: any) {
+        console.error('Error fetching profile:', err);
+
+        if (err.status === 404) {
+          setError({
+            type: 'not-found',
+            message: 'This profile does not exist or has been removed.',
+          });
+        } else if (err.details?.networkError) {
+          setError({
+            type: 'network',
+            message: err.message,
+          });
+        } else if (err.status === 401 || err.status === 403) {
+          setError({
+            type: 'unauthorized',
+            message: 'You do not have permission to view this profile.',
+          });
         } else {
-          toast.error('Failed to load profile');
+          setError({
+            type: 'server',
+            message: err.message || 'Failed to load profile.',
+          });
         }
+
+        toast.error(err.message || 'Failed to load profile');
       } finally {
         setLoading(false);
       }
@@ -56,16 +96,59 @@ export default function Profile() {
     fetchProfile();
   }, [id]);
 
+  // ---------------------------------------------------------------------------
+  // LOADING
+  // ---------------------------------------------------------------------------
   if (loading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading profile...</p>
+          </div>
         </div>
       </DashboardLayout>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // ERROR STATES
+  // ---------------------------------------------------------------------------
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center min-h-[400px] max-w-md mx-auto text-center">
+          <Alert
+            variant={error.type === 'network' ? 'default' : 'destructive'}
+            className="mb-4"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+
+          {error.type === 'network' && (
+            <>
+              <p className="text-muted-foreground mb-4">
+                The backend service may be starting up (Render free tier can take ~30s).
+              </p>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </>
+          )}
+
+          <Link to="/dashboard" className="mt-4">
+            <Button>Back to Dashboard</Button>
+          </Link>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // NOT FOUND (SAFE FALLBACK)
+  // ---------------------------------------------------------------------------
   if (!profile) {
     return (
       <DashboardLayout>
@@ -83,48 +166,44 @@ export default function Profile() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // PROFILE VIEW
+  // ---------------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-3xl font-display font-bold text-foreground">
-                  {profile.user_full_name}
-                </h1>
-                <p className="text-muted-foreground mt-1 flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  {profile.user_email}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant={profile.user_role === 'founder' ? 'default' : 'secondary'}>
-                    {profile.user_role === 'founder' ? 'Founder' : 'Talent'}
-                  </Badge>
-                </div>
-              </div>
-              {isOwnProfile && (
-                <Link to="/profile/edit">
-                  <Button variant="outline" size="sm">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Profile
-                  </Button>
-                </Link>
-              )}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">{profile.user_full_name}</h1>
+            <p className="text-muted-foreground flex items-center gap-2 mt-1">
+              <Mail className="h-4 w-4" />
+              {profile.user_email}
+            </p>
+            <div className="mt-2">
+              <Badge variant={profile.user_role === 'founder' ? 'default' : 'secondary'}>
+                {profile.user_role === 'founder' ? 'Founder' : 'Talent'}
+              </Badge>
             </div>
           </div>
+
+          {isOwnProfile && (
+            <Link to="/profile/edit">
+              <Button variant="outline" size="sm">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Profile
+              </Button>
+            </Link>
+          )}
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
             {profile.bio && (
               <Card>
                 <CardHeader>
                   <CardTitle>About</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="leading-relaxed">{profile.bio}</p>
-                </CardContent>
+                <CardContent>{profile.bio}</CardContent>
               </Card>
             )}
 
@@ -136,9 +215,7 @@ export default function Profile() {
                     Experience
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="leading-relaxed">{profile.experience}</p>
-                </CardContent>
+                <CardContent>{profile.experience}</CardContent>
               </Card>
             )}
 
@@ -148,8 +225,8 @@ export default function Profile() {
                   <CardTitle>Skills</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  {profile.skills.map((skill, index) => (
-                    <Badge key={index} variant="secondary">
+                  {profile.skills.map((skill, i) => (
+                    <Badge key={i} variant="secondary">
                       {skill}
                     </Badge>
                   ))}
@@ -159,12 +236,14 @@ export default function Profile() {
           </div>
 
           <div className="space-y-6">
-            {(profile.github_url || profile.linkedin_url || profile.website_url) && (
+            {(profile.github_url ||
+              profile.linkedin_url ||
+              profile.website_url) && (
               <Card>
                 <CardHeader>
                   <CardTitle>Links</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-2">
                   {profile.github_url && (
                     <a
                       href={profile.github_url}
@@ -206,33 +285,15 @@ export default function Profile() {
               <CardHeader>
                 <CardTitle>Profile Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Member since
-                  </p>
-                  <p className="text-sm mt-1">
-                    {new Date(profile.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Last updated
-                  </p>
-                  <p className="text-sm mt-1">
-                    {new Date(profile.updated_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
-                </div>
+              <CardContent className="space-y-2">
+                <p className="text-sm">
+                  <Calendar className="inline h-4 w-4 mr-2" />
+                  Joined{' '}
+                  {new Date(profile.created_at).toLocaleDateString()}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Updated {new Date(profile.updated_at).toLocaleDateString()}
+                </p>
               </CardContent>
             </Card>
           </div>
