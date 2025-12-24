@@ -1,38 +1,13 @@
-/**
- * Centralized application configuration
- * Reads from environment variables with fallbacks
- */
+// src/lib/config.ts
 
-const getApiBaseUrl = (): string => {
-  // Check for Vite env variable first
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  
-  if (envUrl) {
-    return envUrl;
-  }
-  
-  // Fallback to localhost for development
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8000/api';
-  }
-  
-  // Production fallback (should be set via env)
-  console.warn('VITE_API_BASE_URL not set, using relative path');
-  return '/api';
-};
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 
-export const config = {
-  apiBaseUrl: getApiBaseUrl(),
-  isDevelopment: import.meta.env.DEV,
-  isProduction: import.meta.env.PROD,
-} as const;
-
-// Validate configuration on load
-if (!config.apiBaseUrl) {
-  throw new Error('API Base URL is not configured');
+if (!API_BASE_URL) {
+  throw new Error(
+    "VITE_API_URL is not defined. Set it in Vercel environment variables."
+  );
 }
 
-console.log('🚀 App configured:', {
-  apiBaseUrl: config.apiBaseUrl,
-  environment: config.isDevelopment ? 'development' : 'production',
+export const config = Object.freeze({
+  API_BASE_URL: API_BASE_URL.replace(/\/$/, ""), // remove trailing slash
 });
