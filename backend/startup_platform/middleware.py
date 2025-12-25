@@ -3,6 +3,7 @@ from django.utils.deprecation import MiddlewareMixin
 class CorsOptionsMiddleware(MiddlewareMixin):
     """
     Handle OPTIONS requests for CORS preflight
+    CRITICAL: Must include Access-Control-Allow-Credentials for JWT auth
     """
     def process_request(self, request):
         if request.method == "OPTIONS":
@@ -11,6 +12,7 @@ class CorsOptionsMiddleware(MiddlewareMixin):
             response["Access-Control-Allow-Origin"] = request.META.get("HTTP_ORIGIN", "*")
             response["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
             response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response["Access-Control-Allow-Credentials"] = "true"  # CRITICAL for credentials mode
             response["Access-Control-Max-Age"] = "86400"
             return response
         return None
