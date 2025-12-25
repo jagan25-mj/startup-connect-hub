@@ -80,6 +80,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "startup_platform.middleware.CorsOptionsMiddleware",  # ADD THIS FIRST
+    "corsheaders.middleware.CorsMiddleware",
 ]
 
 
@@ -181,6 +183,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "EXCEPTION_HANDLER": "accounts.views.custom_exception_handler",
 }
 
 
@@ -213,12 +216,16 @@ SIMPLE_JWT = {
 # ------------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = [
     "https://startup-connect-hub.vercel.app",
-    "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
-    # Add any additional Vercel preview URLs as needed
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 # Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://startup-connect-.*\.vercel\.app$",
+]
+
 
 # Explicitly allow these methods
 CORS_ALLOW_METHODS = [
@@ -231,10 +238,11 @@ CORS_ALLOW_METHODS = [
 ]
 
 # CRITICAL: Explicitly allow Authorization header
+
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
-    "authorization",  # CRITICAL for JWT
+    "authorization",
     "content-type",
     "dnt",
     "origin",
@@ -243,14 +251,12 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
 ]
 
-# Expose these headers to browser
 CORS_EXPOSE_HEADERS = [
     "content-type",
     "x-csrftoken",
 ]
 
-# Cache preflight requests for 1 hour
-CORS_PREFLIGHT_MAX_AGE = 3600
+CORS_PREFLIGHT_MAX_AGE = 86400
 
 
 # ------------------------------------------------------------------------------
@@ -258,7 +264,7 @@ CORS_PREFLIGHT_MAX_AGE = 3600
 # ------------------------------------------------------------------------------
 CSRF_TRUSTED_ORIGINS = [
     "https://startup-connect-hub.vercel.app",
-    "https://startup-connect-ghw90kk4n-jagan-sai-muraris-projects.vercel.app",
+    "https://*.vercel.app",
     "https://startup-connect-hub.onrender.com",
 ]
 
@@ -266,34 +272,16 @@ CSRF_TRUSTED_ORIGINS = [
 # Django REST Framework with JWT doesn't need CSRF protection
 CSRF_COOKIE_HTTPONLY = False
 CSRF_USE_SESSIONS = False
-
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = not DEBUG
 
 # ------------------------------------------------------------------------------
 # PRODUCTION SECURITY (ONLY WHEN DEBUG = FALSE)
 # ------------------------------------------------------------------------------
 if not DEBUG:
-    # CRITICAL: Tell Django to trust Render's proxy
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    
-    # SSL/TLS settings
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    
-    # Security headers
-    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = "DENY"
-    
-    # HSTS (uncomment after testing)
-    # SECURE_HSTS_SECONDS = 31536000
-    # SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    # SECURE_HSTS_PRELOAD = True
-else:
-    # Development: Allow localhost origins
-    CORS_ALLOWED_ORIGINS = [
-        "http://localhost:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:5173",
-    ] + CORS_ALLOWED_ORIGINS

@@ -18,8 +18,9 @@ import {
   Plus,
   ArrowRight,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, ApiError } from '@/lib/apiClient';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type {
@@ -36,10 +37,6 @@ interface Stats {
   myStartups: number;
 }
 
-type DashboardError =
-  | { type: 'network'; message: string }
-  | { type: 'server'; message: string };
-
 export default function Dashboard() {
   const { user } = useAuth();
 
@@ -51,81 +48,86 @@ export default function Dashboard() {
   });
   const [interests, setInterests] = useState<Interest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<DashboardError | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
-  // ---------------------------------------------------------------------------
-  // FETCH DASHBOARD DATA
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
+  const fetchDashboardData = async (isRetry = false) => {
     if (!user) return;
 
-    const fetchDashboardData = async () => {
+    if (isRetry) {
+      setRetrying(true);
+    } else {
       setLoading(true);
-      setError(null);
+    }
+    
+    setError(null);
 
+    try {
+      // Fetch with proper error handling for each request
+      let totalStartups = 0;
+      let totalFounders = 0;
+      let totalTalent = 0;
+      let myStartups = 0;
+      let myInterests: Interest[] = [];
+
+      // Startups count
       try {
-        // Fetch startups count
-        const startupsData =
-          await apiClient.get<PaginatedResponse<Startup>>('/startups/');
-        const totalStartups = startupsData.count || 0;
-
-        // Fetch users
-        const usersData = await apiClient.get<User[]>('/auth/users/');
-        const totalFounders = usersData.filter(
-          (u) => u.role === 'founder'
-        ).length;
-        const totalTalent = usersData.filter(
-          (u) => u.role === 'talent'
-        ).length;
-
-        // Founder-specific data
-        let myStartups = 0;
-        if (user.role === 'founder') {
-          const myStartupsData =
-            await apiClient.get<Startup[]>('/startups/my/');
-          myStartups = myStartupsData.length;
-        }
-
-        // Talent-specific data
-        let myInterests: Interest[] = [];
-        if (user.role === 'talent') {
-          myInterests =
-            await apiClient.get<Interest[]>('/my/interests/');
-        }
-
-        setStats({
-          totalStartups,
-          totalFounders,
-          totalTalent,
-          myStartups,
-        });
-        setInterests(myInterests);
-      } catch (err: any) {
-        console.error('Error fetching dashboard data:', err);
-
-        if (err.details?.networkError) {
-          setError({
-            type: 'network',
-            message: err.message,
-          });
-        } else {
-          setError({
-            type: 'server',
-            message:
-              err.message || 'Failed to load dashboard data.',
-          });
-        }
-      } finally {
-        setLoading(false);
+        const startupsData = await apiClient.get<PaginatedResponse<Startup>>('/startups/');
+        totalStartups = startupsData.count || startupsData.results?.length || 0;
+      } catch (err) {
+        console.warn('Failed to fetch startups:', err);
       }
-    };
 
+      // Users
+      try {
+        const usersData = await apiClient.get<User[]>('/auth/users/');
+        totalFounders = usersData.filter((u) => u.role === 'founder').length;
+        totalTalent = usersData.filter((u) => u.role === 'talent').length;
+      } catch (err) {
+        console.warn('Failed to fetch users:', err);
+      }
+
+      // Founder-specific data
+      if (user.role === 'founder') {
+        try {
+          const myStartupsData = await apiClient.get<Startup[]>('/startups/my/');
+          myStartups = myStartupsData.length;
+        } catch (err) {
+          console.warn('Failed to fetch my startups:', err);
+        }
+      }
+
+      // Talent-specific data
+      if (user.role === 'talent') {
+        try {
+          myInterests = await apiClient.get<Interest[]>('/my/interests/');
+        } catch (err) {
+          console.warn('Failed to fetch interests:', err);
+        }
+      }
+
+      setStats({
+        totalStartups,
+        totalFounders,
+        totalTalent,
+        myStartups,
+      });
+      setInterests(myInterests);
+      setError(null);
+    } catch (err) {
+      const apiError = err as ApiError;
+      console.error('Dashboard error:', apiError);
+      setError(apiError);
+    } finally {
+      setLoading(false);
+      setRetrying(false);
+    }
+  };
+
+  useEffect(() => {
     fetchDashboardData();
   }, [user]);
 
-  // ---------------------------------------------------------------------------
-  // STATS CONFIG
-  // ---------------------------------------------------------------------------
   const statCards = [
     {
       title: 'Total Startups',
@@ -138,15 +140,15 @@ export default function Dashboard() {
       title: 'Founders',
       value: stats.totalFounders,
       icon: Briefcase,
-      color: 'text-info',
-      bgColor: 'bg-info/10',
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
     },
     {
       title: 'Talent',
       value: stats.totalTalent,
       icon: Users,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
+      color: 'text-green-600',
+      bgColor: 'bg-green-100',
     },
     ...(user?.role === 'founder'
       ? [
@@ -154,8 +156,8 @@ export default function Dashboard() {
             title: 'My Startups',
             value: stats.myStartups,
             icon: TrendingUp,
-            color: 'text-warning',
-            bgColor: 'bg-warning/10',
+            color: 'text-orange-600',
+            bgColor: 'bg-orange-100',
           },
         ]
       : []),
@@ -172,13 +174,19 @@ export default function Dashboard() {
       : []),
   ];
 
-  // ---------------------------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------------------------
+  if (!user) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <p className="text-muted-foreground">Loading user data...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8 animate-fade-in">
-        {/* Welcome */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold">
@@ -192,7 +200,7 @@ export default function Dashboard() {
           </div>
 
           {user?.role === 'founder' && (
-            <Link to="/startups">
+            <Link to="/startups/create">
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
                 Create Startup
@@ -201,26 +209,31 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Error Alert */}
         {error && (
-          <Alert
-            variant={error.type === 'network' ? 'default' : 'destructive'}
-          >
+          <Alert variant={error.isNetworkError ? 'default' : 'destructive'}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="flex items-center justify-between gap-4">
-              <span>{error.message}</span>
+              <div className="flex-1">
+                <p className="font-medium">{error.message}</p>
+                {error.isRenderColdStart && (
+                  <p className="text-xs mt-1 opacity-75">
+                    The backend is starting up (Render free tier). This usually takes 30-60 seconds.
+                  </p>
+                )}
+              </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.location.reload()}
+                onClick={() => fetchDashboardData(true)}
+                disabled={retrying}
               >
-                Retry
+                <RefreshCw className={`h-4 w-4 mr-2 ${retrying ? 'animate-spin' : ''}`} />
+                {retrying ? 'Retrying...' : 'Retry'}
               </Button>
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Stats */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {statCards.map((stat, index) => (
             <Card
@@ -249,7 +262,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Quick Actions */}
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
@@ -282,7 +294,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Talent Interests */}
           {user?.role === 'talent' && interests.length > 0 && (
             <Card>
               <CardHeader>
@@ -303,9 +314,7 @@ export default function Dashboard() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Interested{' '}
-                        {new Date(
-                          interest.created_at
-                        ).toLocaleDateString()}
+                        {new Date(interest.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <Link to={`/startups/${interest.startup_id}`}>

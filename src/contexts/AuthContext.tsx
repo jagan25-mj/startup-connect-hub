@@ -5,7 +5,7 @@ import React, {
   useState,
   useCallback,
 } from 'react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, ApiError } from '@/lib/apiClient';
 import type {
   User,
   AuthResponse,
@@ -36,17 +36,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ------------------------------------------------------------------
-  // SIGN OUT
-  // ------------------------------------------------------------------
   const signOut = useCallback(async () => {
     setUser(null);
     localStorage.removeItem('auth_tokens');
   }, []);
 
-  // ------------------------------------------------------------------
-  // SIGN UP
-  // ------------------------------------------------------------------
   const signUp = async (
     email: string,
     password: string,
@@ -69,35 +63,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(data.user);
       return { error: null };
-    } catch (error: any) {
-      console.error('Sign up error:', error);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Sign up error:', apiError);
 
-      // NETWORK / COLD START
-      if (error.details?.networkError) {
+      if (apiError.isNetworkError) {
         return {
-          error:
-            'Unable to connect to server. The backend may be starting up. Please wait a moment and try again.',
+          error: apiError.message,
         };
       }
 
-      // VALIDATION ERRORS
-      if (error.status === 400 && error.details) {
+      if (apiError.isValidationError && apiError.details) {
         const message =
-          error.details.email?.[0] ||
-          error.details.password?.[0] ||
-          error.details.full_name?.[0] ||
-          error.details.role?.[0];
-
-        return { error: message || 'Invalid registration details' };
+          apiError.details.email?.[0] ||
+          apiError.details.password?.[0] ||
+          apiError.details.full_name?.[0] ||
+          apiError.details.role?.[0] ||
+          'Invalid registration details';
+        return { error: message };
       }
 
-      return { error: error.message || 'Registration failed' };
+      return { error: apiError.message || 'Registration failed' };
     }
   };
 
-  // ------------------------------------------------------------------
-  // SIGN IN
-  // ------------------------------------------------------------------
   const signIn = async (email: string, password: string) => {
     try {
       const requestData: LoginRequest = { email, password };
@@ -109,47 +98,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(data.user);
       return { error: null };
-    } catch (error: any) {
-      console.error('Sign in error:', error);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Sign in error:', apiError);
 
-      // NETWORK / COLD START
-      if (error.details?.networkError) {
-        return {
-          error:
-            'Unable to connect to server. The backend may be starting up. Please wait and try again.',
-        };
+      if (apiError.isNetworkError) {
+        return { error: apiError.message };
       }
 
-      // AUTH ERRORS
-      if (error.status === 401) {
+      if (apiError.isAuthError) {
         return { error: 'Invalid email or password' };
       }
 
-      return { error: error.message || 'Login failed' };
+      return { error: apiError.message || 'Login failed' };
     }
   };
 
-  // ------------------------------------------------------------------
-  // REFRESH PROFILE
-  // ------------------------------------------------------------------
   const refreshProfile = async () => {
     try {
       const profile = await apiClient.get<User>('/auth/me/');
       setUser(profile);
-    } catch (error: any) {
-      console.error('Failed to refresh profile:', error);
+    } catch (error) {
+      const apiError = error as ApiError;
+      console.error('Failed to refresh profile:', apiError);
 
-      // If network issue, keep user logged in
-      if (error.details?.networkError) return;
-
-      // Otherwise invalidate session
+      if (apiError.isNetworkError) return;
       await signOut();
     }
   };
 
-  // ------------------------------------------------------------------
-  // INITIAL AUTH RESTORE
-  // ------------------------------------------------------------------
   useEffect(() => {
     const initAuth = async () => {
       const storedTokens = localStorage.getItem('auth_tokens');
@@ -158,11 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const profile = await apiClient.get<User>('/auth/me/');
           setUser(profile);
-        } catch (error: any) {
-          console.error('Failed to restore session:', error);
+        } catch (error) {
+          const apiError = error as ApiError;
+          console.error('Failed to restore session:', apiError);
 
-          // Only clear tokens if NOT a network issue
-          if (!error.details?.networkError) {
+          if (!apiError.isNetworkError) {
             localStorage.removeItem('auth_tokens');
           }
         }
@@ -190,9 +167,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ------------------------------------------------------------------
-// HOOK
-// ------------------------------------------------------------------
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

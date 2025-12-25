@@ -222,3 +222,29 @@ class ProfileUpdateView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'GET':
             return ProfileSerializer
         return ProfileUpdateSerializer
+    from rest_framework.views import exception_handler
+from rest_framework.response import Response
+from rest_framework import status as http_status
+
+def custom_exception_handler(exc, context):
+    """
+    Custom exception handler that always returns JSON
+    """
+    response = exception_handler(exc, context)
+
+    if response is None:
+        # Unhandled exception
+        return Response(
+            {
+                "error": "An unexpected error occurred",
+                "detail": str(exc) if settings.DEBUG else "Internal server error"
+            },
+            status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+    # Normalize error format
+    if isinstance(response.data, dict):
+        if 'detail' not in response.data and 'error' not in response.data:
+            response.data = {"error": "Validation error", "details": response.data}
+    
+    return response    

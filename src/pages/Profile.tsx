@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
 import {
   User,
   Mail,
@@ -16,9 +15,11 @@ import {
   Briefcase,
   Calendar,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, ApiError } from '@/lib/apiClient';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from 'sonner';
 
 interface Profile {
   id: string;
@@ -48,34 +49,43 @@ export default function Profile() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<ProfileError | null>(null);
 
   const isOwnProfile = user?.id === id;
 
-  useEffect(() => {
-    if (!id) return;
+  const fetchProfile = useCallback(
+    async (isRetry = false) => {
+      if (!id) return;
 
-    const fetchProfile = async () => {
-      setLoading(true);
+      if (isRetry) {
+        setRetrying(true);
+      } else {
+        setLoading(true);
+      }
+
       setError(null);
 
       try {
         const data = await apiClient.get<Profile>(`/profiles/${id}/`);
         setProfile(data);
-      } catch (err: any) {
-        console.error('Error fetching profile:', err);
+      } catch (err) {
+        const apiError = err as ApiError;
+        console.error('Profile fetch error:', apiError);
 
-        if (err.status === 404) {
+        if (apiError.status === 404) {
           setError({
             type: 'not-found',
             message: 'This profile does not exist or has been removed.',
           });
-        } else if (err.details?.networkError) {
+        } else if (apiError.isNetworkError) {
           setError({
             type: 'network',
-            message: err.message,
+            message:
+              apiError.message ||
+              'Network error. Backend may be starting up.',
           });
-        } else if (err.status === 401 || err.status === 403) {
+        } else if (apiError.status === 401 || apiError.status === 403) {
           setError({
             type: 'unauthorized',
             message: 'You do not have permission to view this profile.',
@@ -83,22 +93,26 @@ export default function Profile() {
         } else {
           setError({
             type: 'server',
-            message: err.message || 'Failed to load profile.',
+            message: apiError.message || 'Failed to load profile.',
           });
         }
 
-        toast.error(err.message || 'Failed to load profile');
+        toast.error(apiError.message || 'Failed to load profile');
       } finally {
         setLoading(false);
+        setRetrying(false);
       }
-    };
+    },
+    [id]
+  );
 
+  useEffect(() => {
     fetchProfile();
-  }, [id]);
+  }, [fetchProfile]);
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // LOADING
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   if (loading) {
     return (
       <DashboardLayout>
@@ -112,16 +126,16 @@ export default function Profile() {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // ERROR STATES
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   if (error) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center min-h-[400px] max-w-md mx-auto text-center">
           <Alert
             variant={error.type === 'network' ? 'default' : 'destructive'}
-            className="mb-4"
+            className="mb-4 w-full"
           >
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error.message}</AlertDescription>
@@ -130,9 +144,19 @@ export default function Profile() {
           {error.type === 'network' && (
             <>
               <p className="text-muted-foreground mb-4">
-                The backend service may be starting up (Render free tier can take ~30s).
+                Backend may be starting up (Render free tier can take ~30–60
+                seconds).
               </p>
-              <Button variant="outline" onClick={() => window.location.reload()}>
+              <Button
+                variant="outline"
+                onClick={() => fetchProfile(true)}
+                disabled={retrying}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-2 ${
+                    retrying ? 'animate-spin' : ''
+                  }`}
+                />
                 Try Again
               </Button>
             </>
@@ -146,9 +170,9 @@ export default function Profile() {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // NOT FOUND (SAFE FALLBACK)
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // SAFE FALLBACK
+  // ------------------------------------------------------------------
   if (!profile) {
     return (
       <DashboardLayout>
@@ -166,9 +190,9 @@ export default function Profile() {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // PROFILE VIEW
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -180,7 +204,13 @@ export default function Profile() {
               {profile.user_email}
             </p>
             <div className="mt-2">
-              <Badge variant={profile.user_role === 'founder' ? 'default' : 'secondary'}>
+              <Badge
+                variant={
+                  profile.user_role === 'founder'
+                    ? 'default'
+                    : 'secondary'
+                }
+              >
                 {profile.user_role === 'founder' ? 'Founder' : 'Talent'}
               </Badge>
             </div>
@@ -203,7 +233,9 @@ export default function Profile() {
                 <CardHeader>
                   <CardTitle>About</CardTitle>
                 </CardHeader>
-                <CardContent>{profile.bio}</CardContent>
+                <CardContent className="whitespace-pre-wrap">
+                  {profile.bio}
+                </CardContent>
               </Card>
             )}
 
@@ -215,7 +247,9 @@ export default function Profile() {
                     Experience
                   </CardTitle>
                 </CardHeader>
-                <CardContent>{profile.experience}</CardContent>
+                <CardContent className="whitespace-pre-wrap">
+                  {profile.experience}
+                </CardContent>
               </Card>
             )}
 
@@ -286,13 +320,14 @@ export default function Profile() {
                 <CardTitle>Profile Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <p className="text-sm">
-                  <Calendar className="inline h-4 w-4 mr-2" />
+                <p className="text-sm flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
                   Joined{' '}
                   {new Date(profile.created_at).toLocaleDateString()}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Updated {new Date(profile.updated_at).toLocaleDateString()}
+                  Updated{' '}
+                  {new Date(profile.updated_at).toLocaleDateString()}
                 </p>
               </CardContent>
             </Card>

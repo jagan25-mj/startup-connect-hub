@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -22,10 +22,11 @@ import {
   Plus,
   ArrowLeft,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, ApiError } from '@/lib/apiClient';
 
 interface Profile {
   id: string;
@@ -51,11 +52,11 @@ export default function EditProfile() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<EditProfileError | null>(null);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [formData, setFormData] = useState({
     bio: '',
     skills: [] as string[],
@@ -64,21 +65,21 @@ export default function EditProfile() {
     linkedin_url: '',
     website_url: '',
   });
+
   const [newSkill, setNewSkill] = useState('');
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // FETCH PROFILE
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!user?.id) return;
+  // ------------------------------------------------------------------
+  const fetchProfile = useCallback(
+    async (isRetry = false) => {
+      if (!user?.id) return;
 
-    const fetchProfile = async () => {
-      setLoading(true);
+      isRetry ? setRetrying(true) : setLoading(true);
       setError(null);
 
       try {
         const data = await apiClient.get<Profile>('/profiles/me/');
-        setProfile(data);
         setFormData({
           bio: data.bio || '',
           skills: data.skills || [],
@@ -87,30 +88,39 @@ export default function EditProfile() {
           linkedin_url: data.linkedin_url || '',
           website_url: data.website_url || '',
         });
-      } catch (err: any) {
-        console.error('Error fetching profile:', err);
+      } catch (err) {
+        const apiError = err as ApiError;
+        console.error('Edit profile fetch error:', apiError);
 
-        if (err.details?.networkError) {
-          setError({ type: 'network', message: err.message });
+        if (apiError.isNetworkError) {
+          setError({
+            type: 'network',
+            message:
+              apiError.message ||
+              'Network error. Backend may be starting.',
+          });
         } else {
           setError({
             type: 'server',
-            message: err.message || 'Failed to load profile.',
+            message: apiError.message || 'Failed to load profile.',
           });
+          toast.error(apiError.message || 'Failed to load profile');
         }
-
-        toast.error(err.message || 'Failed to load profile');
       } finally {
         setLoading(false);
+        setRetrying(false);
       }
-    };
+    },
+    [user?.id]
+  );
 
+  useEffect(() => {
     fetchProfile();
-  }, [user?.id]);
+  }, [fetchProfile]);
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // SAVE PROFILE
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -119,17 +129,21 @@ export default function EditProfile() {
       await apiClient.put('/profiles/me/', formData);
       toast.success('Profile updated successfully!');
       navigate(`/profile/${user?.id}`);
-    } catch (err: any) {
-      console.error('Error updating profile:', err);
+    } catch (err) {
+      const apiError = err as ApiError;
+      console.error('Edit profile save error:', apiError);
 
-      if (err.details?.networkError) {
+      if (apiError.isNetworkError) {
         toast.error(
-          err.message ||
-            'Connection failed. Please check your internet and try again.'
+          apiError.message ||
+            'Connection failed. Please check your network.'
         );
-      } else if (err.status === 400 && err.details) {
-        // Validation errors
-        const validationErrors = Object.entries(err.details)
+        setError({
+          type: 'network',
+          message: apiError.message,
+        });
+      } else if (apiError.isValidationError && apiError.details) {
+        const validationErrors = Object.entries(apiError.details)
           .map(
             ([field, messages]) =>
               `${field}: ${(messages as string[]).join(', ')}`
@@ -137,34 +151,37 @@ export default function EditProfile() {
           .join('; ');
         toast.error(`Validation error: ${validationErrors}`);
       } else {
-        toast.error(err.message || 'Failed to update profile');
+        toast.error(apiError.message || 'Failed to update profile');
       }
     } finally {
       setSaving(false);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // SKILLS HANDLING
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // SKILLS
+  // ------------------------------------------------------------------
   const addSkill = () => {
     const skill = newSkill.trim();
     if (skill && !formData.skills.includes(skill)) {
-      setFormData({ ...formData, skills: [...formData.skills, skill] });
+      setFormData({
+        ...formData,
+        skills: [...formData.skills, skill],
+      });
       setNewSkill('');
     }
   };
 
-  const removeSkill = (skillToRemove: string) => {
+  const removeSkill = (skill: string) => {
     setFormData({
       ...formData,
-      skills: formData.skills.filter((s) => s !== skillToRemove),
+      skills: formData.skills.filter((s) => s !== skill),
     });
   };
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // LOADING
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   if (loading) {
     return (
       <DashboardLayout>
@@ -178,63 +195,29 @@ export default function EditProfile() {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // ERROR STATE
-  // ---------------------------------------------------------------------------
-  if (error) {
+  // ------------------------------------------------------------------
+  // ERROR (FETCH)
+  // ------------------------------------------------------------------
+  if (error && error.type === 'server') {
     return (
       <DashboardLayout>
         <div className="max-w-2xl mx-auto space-y-6">
-          <div className="flex items-center gap-4">
-            <Link to={`/profile/${user?.id}`}>
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h1 className="text-3xl font-bold">Edit Profile</h1>
-          </div>
-
-          <Alert
-            variant={error.type === 'network' ? 'default' : 'destructive'}
-          >
+          <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-4">
-              <span>{error.message}</span>
-              <Button
-                onClick={() => window.location.reload()}
-                variant="outline"
-                size="sm"
-              >
-                Retry
-              </Button>
-            </AlertDescription>
+            <AlertDescription>{error.message}</AlertDescription>
           </Alert>
 
-          {error.type === 'network' && (
-            <Card>
-              <CardContent className="py-8 text-center">
-                <AlertCircle className="h-12 w-12 text-warning mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
-                  Connection Issue
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  The backend service may be starting up. Please wait a moment
-                  and try again.
-                </p>
-                <Button onClick={() => window.location.reload()}>
-                  Try Again
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          <Link to={`/profile/${user?.id}`}>
+            <Button variant="outline">Back to Profile</Button>
+          </Link>
         </div>
       </DashboardLayout>
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   // MAIN FORM
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------------
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -244,19 +227,42 @@ export default function EditProfile() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
+
           <div className="flex-1">
             <h1 className="text-3xl font-bold">Edit Profile</h1>
             <p className="text-muted-foreground mt-1">
               Update your personal information
             </p>
           </div>
+
           <Button onClick={handleSave} disabled={saving}>
             <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
 
-        {/* Profile Header */}
+        {error?.type === 'network' && (
+          <Alert variant="default">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <span>{error.message}</span>
+              <Button
+                onClick={() => fetchProfile(true)}
+                variant="outline"
+                size="sm"
+                disabled={retrying}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    retrying ? 'animate-spin' : ''
+                  }`}
+                />
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* PROFILE HEADER */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-6">
@@ -279,7 +285,7 @@ export default function EditProfile() {
           </CardContent>
         </Card>
 
-        {/* Bio */}
+        {/* ABOUT */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -290,17 +296,17 @@ export default function EditProfile() {
           </CardHeader>
           <CardContent>
             <Textarea
+              rows={4}
               value={formData.bio}
               onChange={(e) =>
                 setFormData({ ...formData, bio: e.target.value })
               }
-              rows={4}
-              placeholder="Write a brief introduction..."
+              placeholder="Write a brief introduction…"
             />
           </CardContent>
         </Card>
 
-        {/* Experience */}
+        {/* EXPERIENCE */}
         <Card>
           <CardHeader>
             <CardTitle>Experience</CardTitle>
@@ -310,6 +316,7 @@ export default function EditProfile() {
           </CardHeader>
           <CardContent>
             <Textarea
+              rows={4}
               value={formData.experience}
               onChange={(e) =>
                 setFormData({
@@ -317,13 +324,12 @@ export default function EditProfile() {
                   experience: e.target.value,
                 })
               }
-              rows={4}
-              placeholder="Describe your work experience..."
+              placeholder="Describe your work experience…"
             />
           </CardContent>
         </Card>
 
-        {/* Skills */}
+        {/* SKILLS */}
         <Card>
           <CardHeader>
             <CardTitle>Skills</CardTitle>
@@ -334,7 +340,7 @@ export default function EditProfile() {
               <Input
                 value={newSkill}
                 onChange={(e) => setNewSkill(e.target.value)}
-                placeholder="Add a skill..."
+                placeholder="Add a skill…"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -342,17 +348,18 @@ export default function EditProfile() {
                   }
                 }}
               />
-              <Button type="button" onClick={addSkill} size="icon">
+              <Button type="button" size="icon" onClick={addSkill}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+
             <div className="flex flex-wrap gap-2">
               {formData.skills.map((skill) => (
                 <Badge key={skill} variant="secondary" className="gap-1">
                   {skill}
                   <button
                     onClick={() => removeSkill(skill)}
-                    className="ml-1 hover:text-destructive"
+                    className="hover:text-destructive"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -362,7 +369,7 @@ export default function EditProfile() {
           </CardContent>
         </Card>
 
-        {/* Links */}
+        {/* LINKS */}
         <Card>
           <CardHeader>
             <CardTitle>Links</CardTitle>
@@ -382,7 +389,6 @@ export default function EditProfile() {
                     github_url: e.target.value,
                   })
                 }
-                placeholder="https://github.com/username"
               />
             </div>
             <div>
@@ -396,7 +402,6 @@ export default function EditProfile() {
                     linkedin_url: e.target.value,
                   })
                 }
-                placeholder="https://linkedin.com/in/username"
               />
             </div>
             <div>
@@ -410,7 +415,6 @@ export default function EditProfile() {
                     website_url: e.target.value,
                   })
                 }
-                placeholder="https://yourwebsite.com"
               />
             </div>
           </CardContent>
