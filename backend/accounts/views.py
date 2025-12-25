@@ -3,7 +3,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import exception_handler
 from django.contrib.auth import get_user_model
+from django.conf import settings
 
 from .serializers import (
     UserRegistrationSerializer,
@@ -222,9 +224,7 @@ class ProfileUpdateView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'GET':
             return ProfileSerializer
         return ProfileUpdateSerializer
-    from rest_framework.views import exception_handler
-from rest_framework.response import Response
-from rest_framework import status as http_status
+
 
 def custom_exception_handler(exc, context):
     """
@@ -239,7 +239,7 @@ def custom_exception_handler(exc, context):
                 "error": "An unexpected error occurred",
                 "detail": str(exc) if settings.DEBUG else "Internal server error"
             },
-            status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
     # Normalize error format
@@ -247,4 +247,4 @@ def custom_exception_handler(exc, context):
         if 'detail' not in response.data and 'error' not in response.data:
             response.data = {"error": "Validation error", "details": response.data}
     
-    return response    
+    return response

@@ -72,7 +72,8 @@ INSTALLED_APPS = [
 # MIDDLEWARE - ORDER IS CRITICAL
 # ------------------------------------------------------------------------------
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # MUST be FIRST
+    "startup_platform.middleware.CorsOptionsMiddleware",  # CORS OPTIONS handler FIRST
+    "corsheaders.middleware.CorsMiddleware",  # CORS middleware SECOND
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -80,8 +81,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "startup_platform.middleware.CorsOptionsMiddleware",  # ADD THIS FIRST
-    "corsheaders.middleware.CorsMiddleware",
 ]
 
 
@@ -179,10 +178,6 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-    # Disable session authentication to avoid CSRF conflicts
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
     "EXCEPTION_HANDLER": "accounts.views.custom_exception_handler",
 }
 
@@ -218,6 +213,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://startup-connect-hub.vercel.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
 ]
 
 # Allow credentials (cookies, authorization headers)
