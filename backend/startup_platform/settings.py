@@ -209,12 +209,17 @@ SIMPLE_JWT = {
 # ------------------------------------------------------------------------------
 # CORS (VERCEL FRONTEND) - CRITICAL CONFIGURATION
 # ------------------------------------------------------------------------------
+# Read from environment variable first, then use defaults
+CORS_ALLOWED_ORIGINS_ENV = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="https://startup-connect-hub.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
+)
+
+# Convert comma-separated string to list
 CORS_ALLOWED_ORIGINS = [
-    "https://startup-connect-hub.vercel.app",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
+    origin.strip() 
+    for origin in CORS_ALLOWED_ORIGINS_ENV.split(",") 
+    if origin.strip()
 ]
 
 # Allow credentials (cookies, authorization headers)
@@ -259,10 +264,17 @@ CORS_PREFLIGHT_MAX_AGE = 86400
 # ------------------------------------------------------------------------------
 # CSRF (REQUIRED FOR RENDER + VERCEL)
 # ------------------------------------------------------------------------------
+# Read from environment variable first, then use defaults
+CSRF_TRUSTED_ORIGINS_ENV = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="https://startup-connect-hub.vercel.app,https://*.vercel.app,https://startup-connect-hub.onrender.com"
+)
+
+# Convert comma-separated string to list
 CSRF_TRUSTED_ORIGINS = [
-    "https://startup-connect-hub.vercel.app",
-    "https://*.vercel.app",
-    "https://startup-connect-hub.onrender.com",
+    origin.strip() 
+    for origin in CSRF_TRUSTED_ORIGINS_ENV.split(",") 
+    if origin.strip()
 ]
 
 # IMPORTANT: Disable CSRF for API endpoints using JWT
