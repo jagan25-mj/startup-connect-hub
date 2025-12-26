@@ -9,9 +9,9 @@ import json
 import time
 from typing import Dict, Any, Optional
 
-# Configuration
-BASE_URL = "http://localhost:8000/api"
-FRONTEND_ORIGIN = "http://localhost:8080"
+# Configuration - PRODUCTION ONLY (NO LOCALHOST)
+BASE_URL = "https://startup-connect-hub.onrender.com/api"
+FRONTEND_ORIGIN = "https://startup-connect-hub.vercel.app"
 
 class Colors:
     GREEN = '\033[92m'

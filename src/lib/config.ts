@@ -1,24 +1,21 @@
 /**
- * Centralized application configuration
- * Reads from environment variables with fallbacks
+ * Centralized application configuration - PRODUCTION ONLY
+ * Always uses Render backend URL (no localhost)
  */
 
 const getApiBaseUrl = (): string => {
-  // Check for Vite env variable first
+  // Always use production Render URL
+  const productionUrl = 'https://startup-connect-hub.onrender.com/api';
+  
+  // Check for Vite env variable override (from vercel.json or .env)
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   
   if (envUrl) {
     return envUrl;
   }
   
-  // Fallback to localhost for development
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8000/api';
-  }
-  
-  // Production fallback (should be set via env)
-  console.warn('VITE_API_BASE_URL not set, using relative path');
-  return '/api';
+  // Always return production URL (no localhost fallback)
+  return productionUrl;
 };
 
 export const config = {

@@ -23,6 +23,6 @@ services:
       - key: ALLOWED_HOSTS
         value: ".onrender.com,startup-connect-hub.onrender.com"
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://startup-connect-hub.vercel.app,http://localhost:5173"
+        value: "https://startup-connect-hub.vercel.app"
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://startup-connect-hub.vercel.app,https://startup-connect-hub.onrender.com"

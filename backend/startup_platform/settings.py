@@ -209,10 +209,10 @@ SIMPLE_JWT = {
 # ------------------------------------------------------------------------------
 # CORS (VERCEL FRONTEND) - CRITICAL CONFIGURATION
 # ------------------------------------------------------------------------------
-# Read from environment variable first, then use defaults
+# Read from environment variable first, then use production defaults (NO LOCALHOST)
 CORS_ALLOWED_ORIGINS_ENV = config(
     "CORS_ALLOWED_ORIGINS",
-    default="https://startup-connect-hub.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
+    default="https://startup-connect-hub.vercel.app"
 )
 
 # Convert comma-separated string to list
