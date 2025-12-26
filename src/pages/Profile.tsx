@@ -67,8 +67,28 @@ export default function Profile() {
       setError(null);
 
       try {
-        const data = await apiClient.get<Profile>(`/profiles/${id}/`);
-        setProfile(data);
+        // Fix: Use the correct endpoint - profiles endpoint expects user_id, not profile id
+        // Try to fetch using /auth/users/<id>/ endpoint instead
+        const userData = await apiClient.get<any>(`/auth/users/${id}/`);
+        
+        // Transform user data to profile format
+        const transformedProfile: Profile = {
+          id: userData.id,
+          user_id: userData.id,
+          user_email: userData.email,
+          user_full_name: userData.full_name || '',
+          user_role: userData.role,
+          bio: userData.bio || null,
+          skills: userData.skills || [],
+          experience: null, // User model doesn't have experience
+          github_url: null,
+          linkedin_url: null,
+          website_url: null,
+          created_at: userData.created_at,
+          updated_at: userData.updated_at,
+        };
+        
+        setProfile(transformedProfile);
       } catch (err) {
         const apiError = err as ApiError;
         console.error('Profile fetch error:', apiError);

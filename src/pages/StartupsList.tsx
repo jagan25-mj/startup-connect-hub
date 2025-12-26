@@ -66,11 +66,27 @@ export default function StartupsList() {
         }
       } catch (err: any) {
         console.error('Error fetching startups:', err);
+        console.error('Error details:', {
+          status: err.status,
+          isNetworkError: err.isNetworkError,
+          isAuthError: err.isAuthError,
+          message: err.message,
+          details: err.details
+        });
 
-        if (err.details?.networkError) {
+        // Check if it's an auth error - might need to re-login
+        if (err.isAuthError || err.status === 401) {
+          setError({
+            type: 'server',
+            message: 'Session expired. Please log in again.',
+          });
+          toast.error('Your session has expired. Please log in again.');
+          // Optionally redirect to login
+          // setTimeout(() => window.location.href = '/auth', 2000);
+        } else if (err.isNetworkError || err.details?.networkError) {
           setError({
             type: 'network',
-            message: err.message,
+            message: err.message || 'Network error. Backend may be starting up.',
           });
         } else {
           setError({
